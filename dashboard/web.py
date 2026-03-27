@@ -1347,18 +1347,37 @@ class WebDashboard:
             allowed_dir = os.path.abspath("data")
             if not cookies_file.startswith(allowed_dir + os.sep):
                 raise HTTPException(status_code=400, detail="Invalid cookies file path")
-            # Parse "name=value; name2=value2" format
+            # Parse cookies — supports both formats:
+            #   1) document.cookie: "name=value; name2=value2"
+            #   2) Netscape/curl:   ".domain\tTRUE\t/\tTRUE\texpiry\tname\tvalue"
             raw = raw_cookies.strip()
             if raw.startswith(("'", '"')) and raw.endswith(("'", '"')):
                 raw = raw[1:-1]
             cookie_dict = {}
-            for pair in raw.split(";"):
-                pair = pair.strip()
-                if "=" in pair:
-                    name, value = pair.split("=", 1)
-                    cookie_dict[name.strip()] = value.strip()
+            lines = raw.splitlines()
+            is_netscape = any(line.strip().startswith(".") or "\t" in line for line in lines if line.strip() and not line.strip().startswith("#"))
+            if is_netscape:
+                # Netscape format: domain \t flag \t path \t secure \t expiry \t name \t value
+                for line in lines:
+                    line = line.strip()
+                    if not line or line.startswith("#"):
+                        continue
+                    parts = line.split("\t")
+                    if len(parts) >= 7:
+                        cookie_dict[parts[5].strip()] = parts[6].strip()
+                    elif len(parts) >= 2 and "=" not in line:
+                        # Malformed but has tabs — skip
+                        continue
             if not cookie_dict:
-                raise HTTPException(status_code=400, detail="No cookies parsed from input")
+                # Try document.cookie format: "name=value; name2=value2"
+                flat = raw.replace("\n", " ").replace("\r", " ")
+                for pair in flat.split(";"):
+                    pair = pair.strip()
+                    if "=" in pair:
+                        name, value = pair.split("=", 1)
+                        cookie_dict[name.strip()] = value.strip()
+            if not cookie_dict:
+                raise HTTPException(status_code=400, detail="No cookies parsed. Paste either document.cookie output or Netscape cookie file.")
             # Verify reddit_session cookie belongs to the right account
             detected_user = ""
             if platform == "reddit" and "reddit_session" in cookie_dict:
