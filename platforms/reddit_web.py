@@ -267,7 +267,7 @@ class RedditWebBot(BasePlatform):
                     logger.error(
                         f"Error scanning r/{sub_name} for '{keyword}': {e}"
                     )
-                time.sleep(random.uniform(1.0, 2.5))
+                time.sleep(random.uniform(2.0, 4.0))
 
             # Strategy 2: Browse hot + new if keyword search found few results
             if sub_opps < 2 and request_count < max_requests:
@@ -286,11 +286,11 @@ class RedditWebBot(BasePlatform):
                             if opp:
                                 opportunities.append(opp)
                                 sub_opps += 1
-                        time.sleep(random.uniform(1.0, 2.0))
+                        time.sleep(random.uniform(2.0, 4.0))
                     except Exception as e:
                         logger.debug(f"Browse r/{sub_name}/{sort} fallback failed: {e}")
 
-            time.sleep(random.uniform(1.5, 3.0))
+            time.sleep(random.uniform(3.0, 6.0))
 
         opportunities.sort(
             key=lambda x: x["relevance_score"], reverse=True
@@ -821,8 +821,8 @@ class RedditWebBot(BasePlatform):
         base_delay = read_time + think_time + type_time
         # Add jitter (+/- 30%)
         delay = base_delay * random.uniform(0.7, 1.3)
-        # Clamp between 8s and 180s
-        return max(8.0, min(delay, 180.0))
+        # Clamp between 20s and 180s (Reddit detects sub-15s replies as bots)
+        return max(20.0, min(delay, 180.0))
 
     def act_dry_run(self, opportunity: Dict, project: Dict) -> str:
         """Generate comment without posting."""
