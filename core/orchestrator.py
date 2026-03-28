@@ -910,6 +910,7 @@ class Orchestrator:
         return expanded
 
     def _act_on_best(self):
+        logger.info("ACT_DEBUG: paused=%s active_hrs=%s", self._paused, self.rate_limiter.is_active_hours())
         """Pick the best pending opportunity and act on it.
 
         Platform rotation: alternates starting platform each cycle so
@@ -927,7 +928,7 @@ class Orchestrator:
 
         project = self.strategy.select_project(self.projects)
         if not project:
-            logger.debug("No project selected")
+            logger.info("ACT_DEBUG: no project selected from %d projects", len(self.projects))
             return
 
         proj_name = project.get("project", {}).get("name", "unknown")
@@ -1015,15 +1016,17 @@ class Orchestrator:
             if platform == "telegram" and "text" not in opp and "title" in opp:
                 opp["text"] = opp["title"]
 
-            # SAFETY: Hard daily cap per account (no more than 15 actions/day)
+            # SAFETY: Hard daily cap per account (no more than 15 write actions/day)
+            # write_only=True excludes upvote/subscribe from the count
             if platform == "reddit":
                 daily_count = self.db.get_action_count(
-                    hours=24, account=account["username"], platform="reddit"
+                    hours=24, account=account["username"], platform="reddit",
+                    write_only=True,
                 )
                 if daily_count >= 15:
                     logger.info(
                         f"Daily cap reached for {account['username']}: "
-                        f"{daily_count}/15 actions today"
+                        f"{daily_count}/15 write actions today"
                     )
                     self.db.log_decision(
                         "daily_cap", platform, proj_name,

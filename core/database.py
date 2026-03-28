@@ -482,6 +482,24 @@ class Database:
                     ON decision_log(decision_type, timestamp DESC);
             """)
 
+        # Conversation memory: track what each account said
+        self.conn.execute("""
+            CREATE TABLE IF NOT EXISTS account_comments (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                account TEXT NOT NULL,
+                subreddit TEXT NOT NULL,
+                post_id TEXT NOT NULL,
+                comment_text TEXT NOT NULL,
+                timestamp TEXT NOT NULL DEFAULT (datetime('now'))
+            )
+        """)
+        try:
+            self.conn.execute("CREATE INDEX IF NOT EXISTS idx_account_comments_account ON account_comments(account, timestamp)")
+            self.conn.execute("CREATE INDEX IF NOT EXISTS idx_account_comments_sub ON account_comments(account, subreddit, timestamp)")
+        except Exception:
+            pass
+
+
             self.conn.commit()
         logger.debug("Database tables initialized")
 
@@ -668,8 +686,12 @@ class Database:
         hours: int = 1,
         account: Optional[str] = None,
         platform: Optional[str] = None,
+        write_only: bool = False,
     ) -> int:
-        """Count actions in the last N hours."""
+        """Count actions in the last N hours.
+
+        If write_only=True, only count comment/post actions (not upvote/subscribe).
+        """
         since = (datetime.utcnow() - timedelta(hours=hours)).isoformat()
         query = "SELECT COUNT(*) FROM actions WHERE timestamp > ? AND success = 1"
         params: list = [since]
@@ -679,7 +701,92 @@ class Database:
         if platform:
             query += " AND platform = ?"
             params.append(platform)
+        if write_only:
+            query += " AND action_type IN ('comment', 'post', 'hub_post')"
         return self.conn.execute(query, params).fetchone()[0]
+
+
+
+    def is_account_banned_from_sub(self, account: str, subreddit: str) -> bool:
+        """Check if an account is banned from a subreddit."""
+        row = self.conn.execute(
+            "SELECT 1 FROM account_banned_subs WHERE account=? AND subreddit=?",
+            (account, subreddit),
+        ).fetchone()
+        return row is not None
+
+    def record_subreddit_ban(self, account: str, subreddit: str, reason: str = ""):
+        """Record that an account is banned from a subreddit."""
+        self._execute_write(
+            "INSERT OR IGNORE INTO account_banned_subs (account, subreddit, reason) VALUES (?, ?, ?)",
+            (account, subreddit, reason),
+        )
+
+    def get_subreddit_risk(self, subreddit: str) -> dict:
+        """Get risk profile for a subreddit."""
+        row = self.conn.execute(
+            "SELECT risk_level, reason, min_account_age_days, min_karma, allows_links FROM risky_subreddits WHERE subreddit=?",
+            (subreddit,),
+        ).fetchone()
+        if row:
+            return {"risk": row[0], "reason": row[1], "min_age": row[2], "min_karma": row[3], "allows_links": bool(row[4])}
+        return {"risk": "unknown", "reason": "", "min_age": 0, "min_karma": 0, "allows_links": True}
+
+    def get_banned_subs_for_account(self, account: str) -> list:
+        """Get all subreddits an account is banned from."""
+        return [r[0] for r in self.conn.execute(
+            "SELECT subreddit FROM account_banned_subs WHERE account=?", (account,)
+        ).fetchall()]
+
+    def get_content_action_count(
+        self,
+        hours: int = 1,
+        account: str = None,
+        platform: str = None,
+    ) -> int:
+        """Count only content actions (post, comment, reply) in the last N hours.
+        Excludes warm-up actions like upvote, subscribe, save, follow."""
+        from datetime import datetime, timedelta
+        since = (datetime.utcnow() - timedelta(hours=hours)).isoformat()
+        query = (
+            "SELECT COUNT(*) FROM actions WHERE timestamp > ? AND success = 1 "
+            "AND action_type IN ('post', 'comment', 'reply', 'hub_post', 'user_post')"
+        )
+        params = [since]
+        if account:
+            query += " AND account = ?"
+            params.append(account)
+        if platform:
+            query += " AND platform = ?"
+            params.append(platform)
+        return self.conn.execute(query, params).fetchone()[0]
+
+
+    def log_comment_content(self, account: str, subreddit: str, post_id: str, comment_text: str):
+        """Store what each account actually said for conversation memory."""
+        self._execute_write(
+            """INSERT INTO account_comments (account, subreddit, post_id, comment_text, timestamp)
+               VALUES (?, ?, ?, ?, datetime('now'))""",
+            (account, subreddit, post_id, comment_text[:500]),
+        )
+
+    def get_recent_comments_by_account(self, account: str, subreddit: str = None, hours: int = 72, limit: int = 10) -> list:
+        """Get recent comments by this account to avoid repetition."""
+        from datetime import datetime, timedelta
+        since = (datetime.utcnow() - timedelta(hours=hours)).isoformat()
+        if subreddit:
+            rows = self.conn.execute(
+                "SELECT comment_text, subreddit, post_id, timestamp FROM account_comments "
+                "WHERE account = ? AND subreddit = ? AND timestamp > ? ORDER BY timestamp DESC LIMIT ?",
+                (account, subreddit, since, limit),
+            ).fetchall()
+        else:
+            rows = self.conn.execute(
+                "SELECT comment_text, subreddit, post_id, timestamp FROM account_comments "
+                "WHERE account = ? AND timestamp > ? ORDER BY timestamp DESC LIMIT ?",
+                (account, since, limit),
+            ).fetchall()
+        return [{"text": r[0], "subreddit": r[1], "post_id": r[2], "ts": r[3]} for r in rows]
 
     def was_target_acted_on(self, target_id: str) -> bool:
         """Check if we already acted on this target."""
