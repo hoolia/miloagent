@@ -267,6 +267,13 @@ function isNoise(msg) { return NOISE_PATTERNS.some(p => p.test(msg)); }
 function toggleNoise() { _showNoise = document.getElementById('feedNoiseToggle')?.checked || false; }
 
 // ══════════════════════════════════════════════════════════════
+// EMPTY STATES — Contextual messages for empty sections
+// ══════════════════════════════════════════════════════════════
+function emptyState(icon, title, desc) {
+  return `<div class="empty-state"><div class="es-icon">${icon}</div><div class="es-title">${esc(title)}</div><div class="es-desc">${esc(desc)}</div></div>`;
+}
+
+// ══════════════════════════════════════════════════════════════
 // API HELPERS
 // ══════════════════════════════════════════════════════════════
 async function api(path) {
@@ -806,7 +813,7 @@ function renderDecisionLog(d) {
   const el = document.getElementById('decisionLog');
   const countEl = document.getElementById('decisionCount');
   if (!el) return;
-  if (!d||!d.length) { el.innerHTML='<p class="no-data">No recent decisions</p>'; if(countEl)countEl.textContent='0'; return; }
+  if (!d||!d.length) { el.innerHTML=emptyState('&#9733;','No decisions yet','The AI decision log populates as Milo acts on opportunities. Each scan cycle evaluates and scores posts.'); if(countEl)countEl.textContent='0'; return; }
   if (countEl) countEl.textContent = d.length;
   el.innerHTML = d.slice(0,40).map(dec => {
     const ts = dec.timestamp ? dec.timestamp.split(' ').pop().substring(0,5) : '';
@@ -886,7 +893,7 @@ function renderCommunities(comms) {
   const statsEl = document.getElementById('commStats');
 
   if (!comms||!comms.length) {
-    if(el) el.innerHTML = '<p class="no-data">No managed communities yet. The agent will create them automatically.</p>';
+    if(el) el.innerHTML = emptyState('&#127968;','No managed communities yet','Milo creates and moderates subreddits automatically based on your project targets and hub configuration.');
     if(countEl) countEl.textContent = '0';
     const mrH = document.getElementById('mrHubs'); if(mrH) mrH.textContent = '0';
     return;
@@ -913,7 +920,7 @@ function renderCommunities(comms) {
 function renderTakeoverTargets(d) {
   const el = document.getElementById('takeoverTargets');
   if (!el) return;
-  if (!d||!d.length) { el.innerHTML='<p class="no-data">No takeover targets found</p>'; return; }
+  if (!d||!d.length) { el.innerHTML=emptyState('&#128269;','No takeover targets','Milo scans for dormant subreddits to take over every 24h. Targets appear when matching subs are found.'); return; }
   el.innerHTML = d.map(t => {
     const sc = t.takeover_score||t.score||0;
     const c = sc>=8?'var(--neon-green)':sc>=6?'var(--yellow)':'var(--text3)';
@@ -924,7 +931,7 @@ function renderTakeoverTargets(d) {
 function renderTakeoverRequests(d) {
   const el = document.getElementById('takeoverRequests');
   if (!el) return;
-  if (!d||!d.length) { el.innerHTML='<p class="no-data">No takeover requests submitted</p>'; return; }
+  if (!d||!d.length) { el.innerHTML=emptyState('&#128230;','No takeover requests','Requests are submitted automatically when Milo finds dormant subs that match your projects.'); return; }
   el.innerHTML = d.map(r => {
     const statusColor = {pending:'var(--yellow)',approved:'var(--neon-green)',denied:'var(--red)'}[r.status]||'var(--text3)';
     return `<div class="feed-item"><span class="type" style="color:var(--neon-orange)">r/${esc(r.subreddit)}</span><span class="msg">${esc(r.project)} — ${esc(r.account)}</span><span style="color:${statusColor};font-weight:600;min-width:60px;text-align:right">${esc(r.status)}</span></div>`;
@@ -1033,7 +1040,7 @@ async function renderNetwork(data) {
 
   const nodes = data.nodes || [];
   const links = data.links || [];
-  if (!nodes.length) { container.innerHTML = '<p class="no-data">No network data</p>'; return; }
+  if (!nodes.length) { container.innerHTML = emptyState('&#128376;','Network building...','Relationships appear as Milo engages with users across subreddits. This populates over days of activity.'); return; }
 
   container.innerHTML = '';
   const width = container.clientWidth || 800;
@@ -1435,6 +1442,7 @@ function renderRadar(data) {
   const countEl = document.getElementById('radarNodeCount');
   if (countEl) countEl.textContent = data.nodes.length;
 
+  if (!data.nodes.length) { container.innerHTML = emptyState('&#127760;','Topic universe building...','The research engine maps subreddits, keywords, and trends. Data populates after the first research cycle (every 12h).'); return; }
   if (!_d3Loaded) { loadD3().then(() => _drawRadar(container, data)); return; }
   _drawRadar(container, data);
 }
@@ -1614,7 +1622,7 @@ function renderTrendingFeed(data) {
   if (!el) return;
   const trends = data.trends || [];
   if (countEl) countEl.textContent = trends.length;
-  if (!trends.length) { el.innerHTML='<p class="no-data">No trend data yet — research job runs every 12h</p>'; return; }
+  if (!trends.length) { el.innerHTML=emptyState('&#128293;','No trends yet','The research engine analyzes trending topics every 12h. Trends appear after the first research cycle completes.'); return; }
   el.innerHTML = trends.slice(0, 30).map(t => {
     const themes = (t.top_themes||[]).slice(0,3).map(th => `<span class="intel-tag theme">${esc(th)}</span>`).join('');
     const questions = (t.recurring_questions||[]).slice(0,2).map(q => `<span class="intel-question">${esc(q)}</span>`).join('');
@@ -1688,7 +1696,7 @@ function renderDiscoveriesList(data) {
   if (!el) return;
   const items = data.discoveries || [];
   if (countEl) countEl.textContent = items.length;
-  if (!items.length) { el.innerHTML='<p class="no-data">No discoveries yet — AI proposes new targets every 6h</p>'; return; }
+  if (!items.length) { el.innerHTML=emptyState('&#128161;','No discoveries yet','AI discovers new subreddits, keywords, and growth opportunities every 6h as it analyzes content.'); return; }
   el.innerHTML = items.map(d => {
     const statusColors = { candidate:'var(--yellow)', approved:'var(--neon-green)', rejected:'var(--red)' };
     const sc = (d.score||0).toFixed(1);
@@ -1714,7 +1722,7 @@ function renderFailurePatterns(data) {
   if (!el) return;
   const items = data.failures || [];
   if (countEl) countEl.textContent = items.length;
-  if (!items.length) { el.innerHTML='<p class="no-data">No failure patterns detected yet</p>'; return; }
+  if (!items.length) { el.innerHTML=emptyState('&#9888;','No failure patterns','Failure analysis runs after comment verification. Patterns emerge once Milo has enough interaction data.'); return; }
   el.innerHTML = items.map(f => {
     return `<div class="failure-card">
       <div style="display:flex;justify-content:space-between;margin-bottom:4px">
@@ -1735,7 +1743,7 @@ function renderSentimentMap(data) {
   if (!el) return;
   const bySub = data.by_subreddit || [];
   const byTone = data.by_tone || [];
-  if (!bySub.length && !byTone.length) { el.innerHTML='<p class="no-data">No sentiment data yet — replies analyzed after comment verification</p>'; return; }
+  if (!bySub.length && !byTone.length) { el.innerHTML=emptyState('&#128200;','No sentiment data yet','Sentiment analysis runs after comment verification. Data appears once replies are collected and scored.'); return; }
   let h = '';
   if (bySub.length) {
     h += '<div style="font-family:var(--font-label);font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:1.5px;margin-bottom:8px">By Subreddit</div>';

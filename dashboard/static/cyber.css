@@ -567,6 +567,12 @@ select.form-input{cursor:pointer}
   .controls-grid{grid-template-columns:1fr}
 }
 
+/* ── Empty States ── */
+.empty-state{display:flex;flex-direction:column;align-items:center;justify-content:center;padding:36px 20px;gap:8px;text-align:center}
+.empty-state .es-icon{font-size:32px;opacity:.3}
+.empty-state .es-title{font-family:var(--font-label);font-size:13px;font-weight:600;color:var(--text2)}
+.empty-state .es-desc{font-family:var(--font-body);font-size:11px;color:var(--text3);max-width:300px;line-height:1.6}
+
 /* ── Intel Sub-tabs ── */
 .intel-tabs{display:flex;gap:4px;margin-bottom:16px;flex-wrap:wrap}
 .intel-tab{padding:5px 14px;border-radius:6px;font-size:11px;font-family:var(--font-label);font-weight:600;cursor:pointer;border:1px solid var(--border);color:var(--text3);transition:all .2s var(--ease)}
