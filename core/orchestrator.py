@@ -1382,7 +1382,7 @@ class Orchestrator:
             if account and self._check_resources():
                 try:
                     bot = self._get_reddit_bot(account)
-                    if hasattr(bot, "warm_up"):
+                    if False and hasattr(bot, "warm_up"):  # DISABLED: triggers CAPTCHAs on low-karma accounts
                         stats = bot.warm_up(project)
                         if any(v > 0 for v in stats.values()):
                             # Record engagement so rate limiter knows about it
@@ -2490,7 +2490,7 @@ class Orchestrator:
 
                 try:
                     bot = self._get_reddit_bot(account)
-                    if hasattr(bot, "warm_up_subreddit"):
+                    if False and hasattr(bot, "warm_up_subreddit"):  # DISABLED: triggers CAPTCHAs
                         stats = bot.warm_up_subreddit(sub)
                         if stats and any(v > 0 for v in stats.values()):
                             actions_taken += 1
@@ -2501,8 +2501,7 @@ class Orchestrator:
                                 account["username"],
                                 "engagement",
                             )
-                    elif hasattr(bot, "warm_up"):
-                        # Fallback to general warm_up
+                    elif False and hasattr(bot, "warm_up"):  # DISABLED: triggers CAPTCHAs
                         stats = bot.warm_up(project)
                         if stats and any(v > 0 for v in stats.values()):
                             actions_taken += 1
