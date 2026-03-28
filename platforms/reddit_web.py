@@ -1229,10 +1229,16 @@ class RedditWebBot(BasePlatform):
         """Warm up the account: subscribe to target subs, upvote posts.
 
         Makes the account look natural before posting. Returns stats.
+        Skips upvoting for low-karma accounts to avoid CAPTCHA triggers.
         """
         stats = {"subscribed": 0, "upvoted": 0, "saved": 0}
 
         if not self._ensure_auth():
+            return stats
+
+        # Skip warm-up entirely if rate-limited (e.g. CAPTCHA cooldown)
+        if time.time() < self._ratelimit_until:
+            logger.debug(f"Skipping warm-up for {self._username}: rate-limited")
             return stats
 
         reddit_config = project.get("reddit", {})

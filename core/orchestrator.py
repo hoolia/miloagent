@@ -56,7 +56,7 @@ logger = logging.getLogger(__name__)
 # ── Hard Safety Limits ────────────────────────────────────────────
 MAX_SUBREDDITS_PER_SCAN = 12    # Never scan more than 12 subs per cycle
 MAX_KEYWORDS_PER_SUBREDDIT = 8  # Never search more than 8 keywords per sub
-SCAN_TIMEOUT_SECONDS = 900      # Hard timeout for entire scan operation (5 projects × 3 platforms + TG discovery)
+SCAN_TIMEOUT_SECONDS = 1200     # Hard timeout for entire scan (8 projects, conservative delays)
 ACT_TIMEOUT_SECONDS = 150       # Hard timeout for action operations (Reddit needs 60-90s)
 LLM_TIMEOUT_SECONDS = 45        # Hard timeout for LLM calls
 
