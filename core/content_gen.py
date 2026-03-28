@@ -485,6 +485,8 @@ class ContentGenerator:
         hub_reference: Optional[str] = None,
         research_context: Optional[str] = None,
         failure_rules: Optional[str] = None,
+        account: Optional[Dict] = None,
+        thread_comments: list = None,
     ) -> str:
         """Generate a Reddit comment for a given post."""
         if is_promotional is None:
@@ -558,10 +560,29 @@ class ContentGenerator:
             hub_reference=hub_reference,
         )
 
-        system_prompt = (
-            f"You are a Reddit user in r/{subreddit}. {tone_instruction} "
-            f"Write only the comment text, nothing else. No meta-text."
-        )
+        # Build enriched system prompt from reddit_system template
+        sys_template = self.templates.get("reddit_system", "")
+        if sys_template and account:
+            username = account.get("username", "anonymous")
+            persona_desc = persona.get("persona", "helpful casual user")
+            promo_intensity = "medium" if is_promotional else "low"
+            # Thread context for awareness
+            thread_ctx = ""
+            if thread_comments:
+                snippets = [f"- u/{c.get('author','?')}: {c.get('body','')[:100]}" for c in thread_comments[:5]]
+                thread_ctx = "OTHER COMMENTS IN THIS THREAD (do NOT repeat their points):\n" + "\n".join(snippets)
+            system_prompt = sys_template.format(
+                username=username,
+                persona_description=persona_desc,
+                tone_profile=tone_style,
+                promotion_intensity=promo_intensity,
+                thread_context=thread_ctx,
+            )
+        else:
+            system_prompt = (
+                f"You are a Reddit user in r/{subreddit}. {tone_instruction} "
+                f"Write only the comment text, nothing else. No meta-text."
+            )
 
         return self.llm.generate(
             prompt=prompt,

@@ -566,6 +566,7 @@ class RedditWebBot(BasePlatform):
                 hub_reference=hub_reference or None,
                 research_context=research_context or None,
                 failure_rules=failure_rules or None,
+                account={"username": self._username, "persona": self.account_config.get("persona", "helpful_casual")},
             )
 
             # Content validation
