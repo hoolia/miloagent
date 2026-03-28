@@ -685,6 +685,15 @@ class RedditWebBot(BasePlatform):
                     )
                     # Don't count as circuit breaker failure — it's temporary
                     return False
+                is_captcha = any(
+                    e[0] == "BAD_CAPTCHA" for e in errors if isinstance(e, list) and e
+                )
+                if is_captcha:
+                    logger.warning(
+                        f"CAPTCHA required for {self._username} — cooldown 2h"
+                    )
+                    self._ratelimit_until = time.time() + 120 * 60
+                    return False
                 logger.error(f"Reddit comment error: {error_msg}")
                 self.db.log_action(
                     platform="reddit",
@@ -980,8 +989,8 @@ class RedditWebBot(BasePlatform):
                     self._ratelimit_until = time.time() + wait * 60
                     return None
                 if "BAD_CAPTCHA" in error_codes:
-                    logger.warning(f"CAPTCHA required for {self._username} — cooldown 30min")
-                    self._ratelimit_until = time.time() + 30 * 60
+                    logger.warning(f"CAPTCHA required for {self._username} — cooldown 2h")
+                    self._ratelimit_until = time.time() + 120 * 60
                     return None
                 logger.error(f"Post creation error: {errors}")
                 return None
@@ -1234,8 +1243,8 @@ class RedditWebBot(BasePlatform):
         else:
             all_subs = []
 
-        # Subscribe to target subreddits (skip already-subscribed, max 5 per cycle)
-        max_subs_per_cycle = 5
+        # Subscribe to target subreddits (skip already-subscribed, max 3 per cycle)
+        max_subs_per_cycle = 3
         new_subs = [s for s in all_subs if s.lower() not in self._subscribed_subs]
         if not new_subs:
             logger.debug(f"Already subscribed to all {len(all_subs)} target subs")
@@ -1250,13 +1259,13 @@ class RedditWebBot(BasePlatform):
                 except Exception:
                     pass
 
-        # Upvote some hot posts in target subs (look natural)
-        subs_to_browse = random.sample(all_subs, min(3, len(all_subs)))
+        # Upvote a few hot posts in target subs (look natural, max 2 subs)
+        subs_to_browse = random.sample(all_subs, min(2, len(all_subs)))
         for sub_name in subs_to_browse:
             try:
                 posts = self._browse_subreddit(sub_name, "hot", limit=5)
-                # Upvote 2-3 random posts
-                to_upvote = random.sample(posts, min(random.randint(2, 3), len(posts)))
+                # Upvote 1-2 random posts (conservative to avoid CAPTCHA)
+                to_upvote = random.sample(posts, min(random.randint(1, 2), len(posts)))
                 for post in to_upvote:
                     fullname = post.get("name", "")
                     if fullname and self.upvote(fullname):

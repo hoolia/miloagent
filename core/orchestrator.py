@@ -1952,6 +1952,15 @@ class Orchestrator:
                 ptype = decision["post_type"]
                 sub = decision["subreddit"]
 
+                # Blacklist: subs that ban bots or require flairs we can't set
+                POST_BLACKLIST = {
+                    "entrepreneur", "startups", "smallbusiness",
+                    "personalfinance", "askreddit", "worldnews",
+                }
+                if sub.lower() in POST_BLACKLIST:
+                    logger.info(f"Skipping post in r/{sub} (blacklisted for posts)")
+                    continue
+
                 # Downgrade trend_react if no context
                 trend_ctx = decision.get("trend_context", "")
                 if ptype == "trend_react" and not trend_ctx:
