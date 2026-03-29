@@ -554,14 +554,14 @@ class AccountManager:
             if acc.get("username", "").lower() == username.lower():
                 return f"Account @{username} already exists on {platform}"
 
-        # Build account entry
-        cookie_index = len(accounts) + 1
-        cookie_file = f"data/cookies/{platform}_account{cookie_index}.json"
+        # Build account entry — cookie file uses username (matches paste endpoint)
+        cookie_file = f"data/cookies/{platform}_{username}.json"
 
         if platform == "reddit":
             new_account = {
                 "username": username,
                 "password": password,
+                "email": email,
                 "client_id": "",
                 "client_secret": "",
                 "user_agent": (
@@ -571,7 +571,7 @@ class AccountManager:
                 "cookies_file": cookie_file,
                 "enabled": True,
                 "persona": persona,
-                "assigned_projects": projects or ["my_project"],
+                "assigned_projects": projects if projects else [],
                 "cooldown_minutes": 15,
                 "max_actions_per_hour": 4,
             }
@@ -584,7 +584,7 @@ class AccountManager:
                 "cookies_file": cookie_file,
                 "enabled": True,
                 "persona": persona,
-                "assigned_projects": projects or ["my_project"],
+                "assigned_projects": projects if projects else [],
                 "cooldown_minutes": 20,
                 "max_actions_per_hour": 3,
             }
