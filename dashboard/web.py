@@ -764,7 +764,7 @@ class WebDashboard:
             """Generate the Reddit authorization URL for a given account username."""
             cfg = _load_reddit_api_config()
             client_id = cfg.get("client_id", "")
-            redirect_uri = cfg.get("redirect_uri", "https://milo.soclose.co/api/reddit/oauth/callback")
+            redirect_uri = cfg.get("redirect_uri", "https://your-domain.com/api/reddit/oauth/callback")
             if not client_id:
                 return {"ok": False, "error": "Reddit API not configured (config/reddit_api.local.yaml missing client_id)"}
 
@@ -803,7 +803,7 @@ class WebDashboard:
             cfg = _load_reddit_api_config()
             client_id = cfg.get("client_id", "")
             client_secret = cfg.get("client_secret", "")
-            redirect_uri = cfg.get("redirect_uri", "https://milo.soclose.co/api/reddit/oauth/callback")
+            redirect_uri = cfg.get("redirect_uri", "https://your-domain.com/api/reddit/oauth/callback")
 
             if not client_id or not client_secret:
                 return {"ok": False, "error": "Reddit API credentials not configured on server"}
