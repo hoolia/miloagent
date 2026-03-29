@@ -23,7 +23,8 @@
 ## Dashboard
 
 <p align="center">
-  <img src="assets/screenshots/dashboard-overview.png" alt="MiloAgent Dashboard — Real-time Overview" width="900">
+  <img src="assets/screenshots/dashboard-overview.png" alt="MiloAgent Dashboard — Mission Control" width="900"><br>
+  <em>Mission Control -- real-time metrics, action timeline, opportunity funnel, subreddit map</em>
 </p>
 
 <details>
@@ -31,17 +32,20 @@
 
 <br>
 
-| Accounts & Karma Tiers | Live Action Feed |
+| Live Ops -- Agent Feed | Intelligence -- Performance & Opportunities |
 |:-:|:-:|
-| <img src="assets/screenshots/dashboard-accounts.png" alt="Account Management" width="420"> | <img src="assets/screenshots/dashboard-actions.png" alt="Action Feed" width="420"> |
+| <img src="assets/screenshots/dashboard-actions.png" alt="Live Agent Feed" width="420"> | <img src="assets/screenshots/dashboard-opportunities.png" alt="Intelligence Hub" width="420"> |
+| *Real-time log feed: scans, actions, learning cycles, errors* | *Performance score, A/B tests, top opportunities, agent brain state* |
 
-| Opportunity Queue | Performance & Insights |
+| Communities -- Hub Management | Config -- Server, Jobs & Accounts |
 |:-:|:-:|
-| <img src="assets/screenshots/dashboard-opportunities.png" alt="Opportunity Queue" width="420"> | <img src="assets/screenshots/dashboard-performance.png" alt="Performance" width="420"> |
+| <img src="assets/screenshots/dashboard-performance.png" alt="Community Management" width="420"> | <img src="assets/screenshots/dashboard-accounts.png" alt="Server Config" width="420"> |
+| *Managed subreddits, hub animation, takeover targets* | *CPU/RAM/Disk, scheduled jobs, project CRUD, account management* |
 
-| Projects Management | Telegram Dashboard |
-|:-:|:-:|
-| <img src="assets/screenshots/dashboard-projects.png" alt="Projects" width="420"> | <img src="assets/screenshots/telegram-bot.png" alt="Telegram Bot" width="420"> |
+<p align="center">
+  <img src="assets/screenshots/landing.png" alt="MiloAgent Landing Page" width="600"><br>
+  <em>Public landing page</em>
+</p>
 
 </details>
 
