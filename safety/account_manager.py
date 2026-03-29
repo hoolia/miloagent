@@ -299,29 +299,31 @@ class AccountManager:
             # Step 2: pick account at current index
             best = available[idx]
 
-            # Step 3: if this account has way more actions than others (4h),
-            # prefer the least-used one instead (fairness correction)
+            # Step 3: fairness correction — if selected account has way more
+            # actions than least-used, switch (single batch query, not N+1)
             if len(available) > 1:
-                counts = []
-                for acc in available:
-                    c = self.db.get_action_count(
-                        hours=4, account=acc["username"], platform=platform
+                try:
+                    best_count = self.db.get_action_count(
+                        hours=4, account=best["username"], platform=platform
                     )
-                    counts.append((c, acc))
-                counts.sort(key=lambda x: x[0])
-                min_count = counts[0][0]
-                best_count = self.db.get_action_count(
-                    hours=4, account=best["username"], platform=platform
-                )
-                # If selected account has 3+ more actions than the least-used,
-                # switch to the least-used instead
-                if best_count > min_count + 2:
-                    best = counts[0][1]
-                    # Update index to match the corrected pick
-                    for i, acc in enumerate(available):
-                        if acc["username"] == best["username"]:
-                            self._rotation_index[platform] = i
-                            break
+                    if best_count > 2:  # Only check others if best has significant activity
+                        min_acc = min(
+                            available,
+                            key=lambda a: self.db.get_action_count(
+                                hours=4, account=a["username"], platform=platform
+                            ),
+                        )
+                        min_count = self.db.get_action_count(
+                            hours=4, account=min_acc["username"], platform=platform
+                        )
+                        if best_count > min_count + 2:
+                            best = min_acc
+                            for i, acc in enumerate(available):
+                                if acc["username"] == best["username"]:
+                                    self._rotation_index[platform] = i
+                                    break
+                except Exception:
+                    pass  # DB error: use round-robin pick
 
             if best:
                 self._last_used[platform] = best["username"]

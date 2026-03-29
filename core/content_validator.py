@@ -90,12 +90,30 @@ class ContentValidator:
         """Validate content against business profile.
 
         Returns:
+        # Reject empty or trivially short comments
+        if not content or len(content.strip()) < 15:
+            return {"valid": False, "score": 0, "issues": ["empty_or_trivial: comment too short (<15 chars)"]}
+
             (is_valid, score, issues)
             - is_valid: True if content passes all critical checks
             - score: 0.0-1.0 quality score
             - issues: list of issue descriptions
         """
         issues = []
+
+        # Block RSS link spam
+        rss_spam_patterns = [
+            "found this earlier", "came across this", "saw this and thought",
+            "stumbled upon this", "check this out:", "interesting read:",
+            "news.google.com", "rss/articles/",
+        ]
+        lower_content = content.lower() if content else ""
+        for rp in rss_spam_patterns:
+            if rp in lower_content:
+                issues.append(f"RSS spam pattern: '{rp}'")
+                score -= 0.5
+                break
+
         score = 1.0
         proj = project.get("project", project)
         profile = proj.get("business_profile", {})
@@ -240,8 +258,8 @@ class ContentValidator:
         if platform == "twitter" and len(content) > 280:
             issues.append(f"Tweet exceeds 280 chars ({len(content)})")
         elif platform == "reddit":
-            if word_count < 8:
-                issues.append(f"Comment too short ({word_count} words)")
+            if word_count < 15:
+                issues.append(f"CRITICAL: Comment too short ({word_count} words, min 15)")
             elif word_count > 120:
                 # Real Reddit comments that perform well are SHORT
                 issues.append(f"CRITICAL: Comment too long ({word_count} words, max 120)")

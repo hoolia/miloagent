@@ -1011,6 +1011,15 @@ class Orchestrator:
                 )
                 continue
 
+            # Check if account is banned from this subreddit (prevents 403 retry loops)
+            if platform == "reddit":
+                sub_name = opp.get("subreddit_or_query", "") or opp.get("subreddit", "")
+                if sub_name and self.db.is_account_banned_from_sub(account["username"], sub_name):
+                    self.db.update_opportunity_status(
+                        opp["target_id"], "skipped", rejection_reason="account_banned_from_sub",
+                    )
+                    continue
+
             # Cross-account CAPTCHA cooling: skip subreddits where CAPTCHA was recently hit
             if platform == "reddit":
                 sub_name = opp.get("subreddit_or_query", "") or opp.get("subreddit", "")
@@ -1237,8 +1246,17 @@ class Orchestrator:
                 # Mark opportunity as failed to prevent retry loops
                 try:
                     self.db.update_opportunity_status(opp["target_id"], "failed")
-                except Exception:
-                    pass
+                except Exception as db_err:
+                    logger.warning(f"Could not mark opportunity as failed: {db_err}")
+                    # Fallback: log decision so we have a record even if opp update fails
+                    try:
+                        self.db.log_decision(
+                            "action_exception", platform, proj_name,
+                            account.get("username", "?"), opp.get("target_id", ""),
+                            details=str(e)[:200], outcome="failed",
+                        )
+                    except Exception:
+                        pass
                 # Graduated cooldown from exception context
                 cooldown = self._error_cooldown_from_exception(str(e))
                 self.account_mgr.mark_cooldown(

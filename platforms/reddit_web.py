@@ -669,6 +669,14 @@ class RedditWebBot(BasePlatform):
             )
             if not comment_text:
                 logger.warning("Content validation failed after retry, skipping")
+                # Mark as failed so orchestrator doesn't retry this opportunity
+                self.db.log_action(
+                    platform="reddit", action_type="comment",
+                    account=self._username,
+                    project=project.get("project", {}).get("name", "unknown"),
+                    target_id=opportunity.get("id", ""),
+                    success=False, error_message="content_validation_failed",
+                )
                 return False
 
             logger.info(
@@ -725,13 +733,21 @@ class RedditWebBot(BasePlatform):
                 self._consecutive_failures += 1
                 return False
             if resp.status_code == 403:
-                logger.error(
-                    f"Reddit 403 on comment POST. "
-                    f"modhash={'yes' if self._modhash else 'no'}, "
-                    f"cookies={list(self.session.cookies.keys())}"
-                )
+                subreddit_name = opportunity.get("subreddit", opportunity.get("subreddit_or_query", ""))
+                # 403 on POST = likely banned from this subreddit
+                if subreddit_name:
+                    self.db.ban_account_from_sub(self._username, subreddit_name)
+                    logger.warning(
+                        f"403 on comment in r/{subreddit_name} — "
+                        f"account {self._username} likely banned from this sub (blacklisted)"
+                    )
+                else:
+                    logger.error(
+                        f"Reddit 403 on comment POST (no subreddit context). "
+                        f"modhash={'yes' if self._modhash else 'no'}"
+                    )
                 self._authenticated = False
-                self._modhash = ""  # Clear stale modhash to force re-auth
+                self._modhash = ""
                 self._consecutive_failures += 1
                 return False
 
@@ -768,6 +784,10 @@ class RedditWebBot(BasePlatform):
                         f"waiting {wait_minutes}min before next action"
                     )
                     self._ratelimit_until = time.time() + wait_minutes * 60
+                    # Cross-account subreddit cooling: all accounts avoid this sub
+                    sub = opportunity.get("subreddit", opportunity.get("subreddit_or_query", ""))
+                    if sub:
+                        self.db.log_captcha_hit(sub, self._username)  # reuse captcha_hot mechanism
                     self.db.log_action(
                         platform="reddit",
                         action_type="comment",
@@ -1180,7 +1200,16 @@ class RedditWebBot(BasePlatform):
 
             if resp.status_code == 429:
                 logger.warning("Rate limited on post creation")
-                self._ratelimit_until = time.time() + 10 * 60  # 10min default
+                self._ratelimit_until = time.time() + 10 * 60
+                return None
+
+            if resp.status_code == 403:
+                self.db.ban_account_from_sub(self._username, subreddit)
+                logger.warning(
+                    f"403 on post in r/{subreddit} — "
+                    f"account {self._username} banned from this sub (blacklisted)"
+                )
+                self._consecutive_failures += 1
                 return None
 
             result = resp.json()
