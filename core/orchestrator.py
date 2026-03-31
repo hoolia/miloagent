@@ -858,12 +858,14 @@ class Orchestrator:
         return expanded
 
     def _act_on_best(self):
-        logger.info("ACT_DEBUG: paused=%s active_hrs=%s", self._paused, self.rate_limiter.is_active_hours())
-        """Pick the best pending opportunity and act on it.
+        """Pick the best pending opportunities and act on 1-3 per cycle.
 
-        Platform rotation: alternates starting platform each cycle so
-        Twitter gets equal chances to act (not always behind Reddit).
+        Multi-action: tries up to MAX_ACTIONS_PER_CYCLE different projects
+        per 5-minute cycle, each with a different account. This maximizes
+        throughput while spreading actions across projects.
         """
+        MAX_ACTIONS_PER_CYCLE = 3
+        logger.info("ACT_DEBUG: paused=%s active_hrs=%s", self._paused, self.rate_limiter.is_active_hours())
         if self._paused:
             return
         if not self.rate_limiter.is_active_hours():
@@ -874,11 +876,26 @@ class Orchestrator:
             logger.info("Paused via Telegram dashboard")
             return
 
-        project = self.strategy.select_project(self.projects)
-        if not project:
-            logger.info("ACT_DEBUG: no project selected from %d projects", len(self.projects))
-            return
+        acted = 0
+        attempted_projects = set()
+        for _ in range(MAX_ACTIONS_PER_CYCLE):
+            project = self.strategy.select_project(self.projects, exclude=attempted_projects)
+            if not project:
+                break
+            proj_name = project.get("project", {}).get("name", "unknown")
+            attempted_projects.add(proj_name)
 
+            if self._act_on_single_opportunity(project):
+                acted += 1
+                # Delay between actions to look human
+                if acted < MAX_ACTIONS_PER_CYCLE:
+                    time.sleep(random.uniform(30, 90))
+
+        if acted:
+            logger.info(f"ACT cycle: {acted}/{MAX_ACTIONS_PER_CYCLE} actions taken across {len(attempted_projects)} projects")
+
+    def _act_on_single_opportunity(self, project):
+        """Act on the best opportunity for a single project. Returns True if action taken."""
         proj_name = project.get("project", {}).get("name", "unknown")
 
         # Rotate starting platform each cycle (thread-safe)
@@ -1062,6 +1079,10 @@ class Orchestrator:
                 )
                 continue
 
+            # Human-like jitter: random 5-30s pause before acting (anti-pattern detection)
+            jitter = random.uniform(5, 30)
+            time.sleep(jitter)
+
             # SAFETY: Resource check before LLM call + posting
             if not self._check_resources():
                 logger.info("Action skipped: resources too low")
@@ -1239,7 +1260,7 @@ class Orchestrator:
                             _pick(_TWITTER_ACTION_MSGS, title=title_short)
                         )
 
-                    return  # One action per cycle
+                    return True  # Action succeeded
                 else:
                     # Mark opportunity as failed to prevent retry spam
                     self.db.update_opportunity_status(opp["target_id"], "failed")
@@ -1275,6 +1296,7 @@ class Orchestrator:
                 self.account_mgr.mark_cooldown(
                     platform, account["username"], minutes=cooldown
                 )
+        return False
 
     # ── Graduated Cooldown ──────────────────────────────────────
     def _graduated_cooldown(self, platform: str, account: str) -> int:
@@ -1380,26 +1402,23 @@ class Orchestrator:
         for project in self.projects:
             proj_name = project.get("project", {}).get("name", "unknown")
 
-            # Reddit engagement
-            account = self.account_mgr.get_next_account("reddit")
+            # Reddit engagement -- warm_up only for accounts with karma>=5
+            # (low-karma accounts get CAPTCHA'd on warm_up actions)
+            account = self.account_mgr.get_next_account("reddit", project=proj_name)
             if account and self._check_resources():
                 try:
-                    bot = self._get_reddit_bot(account)
-                    if False and hasattr(bot, "warm_up"):  # DISABLED: triggers CAPTCHAs on low-karma accounts
+                    karma = self.account_mgr.get_cached_karma(account["username"])
+                    if karma is not None and karma >= 5 and hasattr(self._get_reddit_bot(account), "warm_up"):
+                        bot = self._get_reddit_bot(account)
                         stats = bot.warm_up(project)
                         if any(v > 0 for v in stats.values()):
-                            # Record engagement so rate limiter knows about it
                             self.rate_limiter.record_action(
                                 account["username"], "reddit"
                             )
-                            from dashboard.telegram_bot import _ENGAGE_REDDIT_MSGS, _pick
-                            self._send_telegram_alert(_pick(
-                                _ENGAGE_REDDIT_MSGS,
-                                proj=proj_name,
-                                sub=stats['subscribed'],
-                                up=stats['upvoted'],
-                                sv=stats['saved'],
-                            ))
+                            logger.info(
+                                f"Warm-up for {account['username']} (karma={karma}): "
+                                f"sub={stats.get('subscribed',0)} up={stats.get('upvoted',0)}"
+                            )
                 except Exception as e:
                     logger.error(f"Reddit engagement error: {e}")
 

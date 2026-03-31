@@ -210,8 +210,14 @@ class StrategyEngine:
 
         return score
 
-    def select_project(self, projects: List[Dict]) -> Optional[Dict]:
-        """Select which project to promote next."""
+    def select_project(self, projects: List[Dict], exclude: set = None) -> Optional[Dict]:
+        """Select which project to promote next.
+
+        Args:
+            exclude: set of project names to skip (already acted this cycle)
+        """
+        if exclude:
+            projects = [p for p in projects if p.get("project", {}).get("name", "unknown") not in exclude]
         if not projects:
             return None
         if len(projects) == 1:
