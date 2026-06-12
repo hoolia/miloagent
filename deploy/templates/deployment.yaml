@@ -74,11 +74,13 @@ spec:
               mountPath: /app/config/expert_personas.yaml
               subPath: expert_personas.yaml
               readOnly: true
-            {{- range list "llm" "reddit_accounts" "reddit_api" "twitter_accounts" "telegram" "telegram_user_accounts" }}
+            {{- range $k, $v := .Values.secrets }}
+            {{- if $v }}
             - name: secret-files
-              mountPath: /app/config/{{ . }}.yaml
-              subPath: {{ . }}.yaml
+              mountPath: /app/config/{{ $k }}.yaml
+              subPath: {{ $k }}.yaml
               readOnly: true
+            {{- end }}
             {{- end }}
       volumes:
         - name: data
