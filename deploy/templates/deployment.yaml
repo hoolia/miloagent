@@ -1,0 +1,94 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "miloagent.fullname" . }}
+  labels:
+    {{- include "miloagent.labels" . | nindent 4 }}
+spec:
+  replicas: {{ .Values.replicaCount }}
+  # Recreate (not RollingUpdate): the RWO PVC + single-writer SQLite cannot be held by
+  # two pods at once, so a rolling rollout would deadlock.
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      {{- include "miloagent.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "miloagent.selectorLabels" . | nindent 8 }}
+      annotations:
+        # Roll the pod automatically when config/secrets change (no Reloader on cluster).
+        checksum/config: {{ include (print $.Template.BasePath "/configmap.yaml") . | sha256sum }}
+        checksum/secret-files: {{ include (print $.Template.BasePath "/secret-files.yaml") . | sha256sum }}
+        checksum/secret-env: {{ include (print $.Template.BasePath "/secret-env.yaml") . | sha256sum }}
+    spec:
+      {{- if .Values.imagePullSecret.create }}
+      imagePullSecrets:
+        - name: {{ include "miloagent.fullname" . }}-ghcr-pull
+      {{- end }}
+      containers:
+        - name: miloagent
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          ports:
+            - name: web
+              containerPort: {{ .Values.service.port }}
+          envFrom:
+            - secretRef:
+                name: {{ include "miloagent.fullname" . }}-env
+          startupProbe:
+            httpGet:
+              path: /health
+              port: web
+            periodSeconds: 10
+            failureThreshold: 30
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: web
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: web
+            periodSeconds: 30
+            failureThreshold: 5
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
+          volumeMounts:
+            - name: data
+              mountPath: /app/data
+              subPath: data
+            - name: data
+              mountPath: /app/projects
+              subPath: projects
+            - name: logs
+              mountPath: /app/logs
+            - name: config
+              mountPath: /app/config/settings.yaml
+              subPath: settings.yaml
+              readOnly: true
+            - name: config
+              mountPath: /app/config/expert_personas.yaml
+              subPath: expert_personas.yaml
+              readOnly: true
+            {{- range list "llm" "reddit_accounts" "reddit_api" "twitter_accounts" "telegram" "telegram_user_accounts" }}
+            - name: secret-files
+              mountPath: /app/config/{{ . }}.yaml
+              subPath: {{ . }}.yaml
+              readOnly: true
+            {{- end }}
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: {{ include "miloagent.fullname" . }}-data
+        - name: logs
+          emptyDir: {}
+        - name: config
+          configMap:
+            name: {{ include "miloagent.fullname" . }}-config
+        - name: secret-files
+          secret:
+            secretName: {{ include "miloagent.fullname" . }}-files

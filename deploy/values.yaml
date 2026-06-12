@@ -1,0 +1,61 @@
+replicaCount: 1
+
+image:
+  repository: ghcr.io/hoolia/miloagent
+  tag: latest
+  pullPolicy: Always
+
+# Private GHCR image → templated dockerconfigjson pull secret.
+# Default is VALID-but-empty; real creds are supplied via the ArgoCD Application values.
+# (An invalid-base64 placeholder here would break ALL image pulls on the node.)
+imagePullSecret:
+  create: true
+  dockerconfigjson: '{"auths":{}}'
+
+resources:
+  requests:
+    cpu: 500m
+    memory: 1Gi
+  limits:
+    cpu: "2"
+    memory: 2Gi
+
+persistence:
+  storageClass: berry-storage-client-rbd
+  size: 5Gi
+
+service:
+  port: 8420
+
+route:
+  enabled: true
+  host: milo.grn.cloud
+  termination: edge
+  insecureEdgeTerminationPolicy: Redirect
+
+# Headless Chromium (web/cookie mode) needs anyuid, bound to the namespace default SA.
+anyuid:
+  enabled: true
+
+# Non-secret config. Empty → chart uses the bundled defaults in deploy/files/.
+config:
+  settings: ""
+  expert_personas: ""
+
+# Credential config files (whole-file; the app loader replaces whole files, never merges).
+# Placeholders by default — real values come from the ArgoCD Application valuesObject.
+secrets:
+  llm: ""
+  reddit_accounts: ""
+  reddit_api: ""
+  twitter_accounts: ""
+  telegram: ""
+  telegram_user_accounts: ""
+
+# Scalar env (envFrom secret).
+env:
+  MILO_WEB_USER: admin
+  MILO_WEB_PASS: changeme-set-a-strong-password
+  MILO_WEB_TOKEN: ""
+  TELEGRAM_BOT_TOKEN: ""
+  TZ: UTC
