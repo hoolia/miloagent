@@ -35,6 +35,9 @@ route:
   enabled: true
   # Empty → OpenShift auto-generates a host. Set your own hostname in downstream values.
   host: ""
+  # Extra Route annotations (generic passthrough). Downstream deployments use these to drive
+  # platform integrations, e.g. cert-manager (TLS) and external-dns (DNS). Empty by default.
+  annotations: {}
   termination: edge
   insecureEdgeTerminationPolicy: Redirect
 
