@@ -27,12 +27,15 @@ jobs:
           helm package deploy/ --destination .cr-pkg
 
       - name: Build merged index (preserve previously published versions)
+        # Derive the Pages URL from the repo so this works for any fork/owner upstream.
+        env:
+          PAGES_URL: https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}
         run: |
           git show origin/gh-pages:index.yaml > .cr-pkg/old-index.yaml 2>/dev/null || true
           if [ -s .cr-pkg/old-index.yaml ]; then
-            helm repo index .cr-pkg --url https://hoolia.github.io/miloagent --merge .cr-pkg/old-index.yaml
+            helm repo index .cr-pkg --url "$PAGES_URL" --merge .cr-pkg/old-index.yaml
           else
-            helm repo index .cr-pkg --url https://hoolia.github.io/miloagent
+            helm repo index .cr-pkg --url "$PAGES_URL"
           fi
           rm -f .cr-pkg/old-index.yaml
 

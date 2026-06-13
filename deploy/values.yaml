@@ -5,11 +5,13 @@ image:
   tag: latest
   pullPolicy: Always
 
-# Private GHCR image → templated dockerconfigjson pull secret.
-# Default is VALID-but-empty; real creds are supplied via the ArgoCD Application values.
-# (An invalid-base64 placeholder here would break ALL image pulls on the node.)
+# The published image (ghcr.io/<owner>/miloagent) is PUBLIC, so no pull secret is needed
+# by default. Set create: true and supply dockerconfigjson via a downstream values override
+# only if you host the image in a private registry.
+# NOTE: keep the default '{"auths":{}}' VALID — an invalid-base64 placeholder here would
+# break ALL image pulls on the node.
 imagePullSecret:
-  create: true
+  create: false
   dockerconfigjson: '{"auths":{}}'
 
 resources:
@@ -21,7 +23,9 @@ resources:
     memory: 2Gi
 
 persistence:
-  storageClass: berry-storage-client-rbd
+  # null → use the cluster's default StorageClass. Override per-environment (e.g. an RWO
+  # block class) in your downstream values. RWO is required (single-writer SQLite + Recreate).
+  storageClass: null
   size: 5Gi
 
 service:
@@ -29,12 +33,15 @@ service:
 
 route:
   enabled: true
-  host: milo.grn.cloud
+  # Empty → OpenShift auto-generates a host. Set your own hostname in downstream values.
+  host: ""
   termination: edge
   insecureEdgeTerminationPolicy: Redirect
 
-# Headless Chromium (web/cookie mode) needs anyuid, bound to the namespace default SA.
-anyuid:
+# OpenShift SCC: headless Chromium (web/cookie mode) runs as an arbitrary UID and needs the
+# anyuid SCC, granted to the namespace default ServiceAccount via a RoleBinding. Disable on
+# non-OpenShift clusters or where the default SA already has sufficient privileges.
+securityContext:
   enabled: true
 
 # Non-secret config. Empty → chart uses the bundled defaults in deploy/files/.

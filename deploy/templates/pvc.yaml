@@ -8,7 +8,11 @@ spec:
   # RWO block storage: single writer for the SQLite WAL database.
   accessModes:
     - ReadWriteOnce
-  storageClassName: {{ .Values.persistence.storageClass }}
+  # Omit storageClassName entirely when unset → use the cluster default. (An empty string
+  # "" would instead DISABLE dynamic provisioning, which is not what null means here.)
+  {{- with .Values.persistence.storageClass }}
+  storageClassName: {{ . }}
+  {{- end }}
   resources:
     requests:
       storage: {{ .Values.persistence.size }}
