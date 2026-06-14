@@ -1,7 +1,9 @@
 replicaCount: 1
 
 image:
-  repository: ghcr.io/hoolia/miloagent
+  # Override with your own registry/owner. The build-image workflow publishes to
+  # ghcr.io/<repo-owner>/miloagent for whatever org/user forks this repo.
+  repository: ghcr.io/OWNER/miloagent
   tag: latest
   pullPolicy: Always
 
