@@ -1,0 +1,73 @@
+replicaCount: 1
+
+image:
+  # Override with your own registry/owner. The build-image workflow publishes to
+  # ghcr.io/<repo-owner>/miloagent for whatever org/user forks this repo.
+  repository: ghcr.io/OWNER/miloagent
+  tag: latest
+  pullPolicy: Always
+
+# The published image (ghcr.io/<owner>/miloagent) is PUBLIC, so no pull secret is needed
+# by default. Set create: true and supply dockerconfigjson via a downstream values override
+# only if you host the image in a private registry.
+# NOTE: keep the default '{"auths":{}}' VALID — an invalid-base64 placeholder here would
+# break ALL image pulls on the node.
+imagePullSecret:
+  create: false
+  dockerconfigjson: '{"auths":{}}'
+
+resources:
+  requests:
+    cpu: 500m
+    memory: 1Gi
+  limits:
+    cpu: "2"
+    memory: 2Gi
+
+persistence:
+  # null → use the cluster's default StorageClass. Override per-environment (e.g. an RWO
+  # block class) in your downstream values. RWO is required (single-writer SQLite + Recreate).
+  storageClass: null
+  size: 5Gi
+
+service:
+  port: 8420
+
+route:
+  enabled: true
+  # Empty → OpenShift auto-generates a host. Set your own hostname in downstream values.
+  host: ""
+  # Extra Route annotations (generic passthrough). Downstream deployments use these to drive
+  # platform integrations, e.g. cert-manager (TLS) and external-dns (DNS). Empty by default.
+  annotations: {}
+  termination: edge
+  insecureEdgeTerminationPolicy: Redirect
+
+# OpenShift SCC: headless Chromium (web/cookie mode) runs as an arbitrary UID and needs the
+# anyuid SCC, granted to the namespace default ServiceAccount via a RoleBinding. Disable on
+# non-OpenShift clusters or where the default SA already has sufficient privileges.
+securityContext:
+  enabled: true
+
+# Non-secret config. Empty → chart uses the bundled defaults in deploy/files/.
+config:
+  settings: ""
+  expert_personas: ""
+
+# Credential config files (whole-file; the app loader replaces whole files, never merges).
+# Placeholders by default — real values come from the ArgoCD Application valuesObject.
+secrets:
+  llm: ""
+  reddit_accounts: ""
+  reddit_api: ""
+  twitter_accounts: ""
+  telegram: ""
+  telegram_user_accounts: ""
+
+# Scalar env (envFrom secret).
+env:
+  MILO_WEB_USER: admin
+  MILO_WEB_PASS: changeme-set-a-strong-password
+  MILO_WEB_TOKEN: ""
+  TELEGRAM_BOT_TOKEN: ""
+  TZ: UTC

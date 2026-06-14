@@ -1,0 +1,13 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "miloagent.fullname" . }}
+  labels:
+    {{- include "miloagent.labels" . | nindent 4 }}
+spec:
+  selector:
+    {{- include "miloagent.selectorLabels" . | nindent 4 }}
+  ports:
+    - name: web
+      port: {{ .Values.service.port }}
+      targetPort: web

@@ -1,23 +1,25 @@
 FROM python:3.13-slim
 
-# System deps for Playwright Chromium
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    libnss3 libnspr4 libatk1.0-0 libatk-bridge2.0-0 libcups2 \
-    libdrm2 libdbus-1-3 libxkbcommon0 libatspi2.0-0 libxcomposite1 \
-    libxdamage1 libxfixes3 libxrandr2 libgbm1 libpango-1.0-0 \
-    libcairo2 libasound2 libwayland-client0 \
-    && rm -rf /var/lib/apt/lists/*
+# Chromium + HOME write to group-writable paths so the image runs cleanly under
+# both anyuid (root, on OpenShift) and an arbitrary non-root UID (GID 0).
+ENV PLAYWRIGHT_BROWSERS_PATH=/app/pw-browsers \
+    HOME=/app \
+    PYTHONUNBUFFERED=1
 
 WORKDIR /app
 
 COPY requirements.txt .
+# --with-deps pulls every system lib Chromium needs (the hand-curated apt list
+# drifted and caused silent headless-launch failures).
 RUN pip install --no-cache-dir -r requirements.txt \
-    && playwright install chromium
+    && playwright install --with-deps chromium
 
 COPY . .
 
-# Create data dirs
-RUN mkdir -p data logs
+# Runtime-writable dirs + OpenShift arbitrary-UID support (member of GID 0).
+RUN mkdir -p data logs projects pw-browsers \
+    && chgrp -R 0 /app \
+    && chmod -R g=u /app
 
 EXPOSE 8420
 
