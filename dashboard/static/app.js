@@ -1036,7 +1036,7 @@ function renderManageProjects(d) {
   const el = document.getElementById('projectsManage');
   if (!el) return;
   if (!d||!d.length) { el.innerHTML='<p class="no-data">No projects</p>'; return; }
-  el.innerHTML = d.map(p => `<div class="entity-card"><div><div class="name">${esc(p.name)} <span class="badge ${p.enabled?'on':'off'}">${p.enabled?'Active':'Off'}</span></div><div class="meta">${esc(p.url||'')} — ${p.actions_24h||0} actions/24h — weight: ${p.weight||1}</div></div><div class="actions-area"><button class="btn btn-sm" onclick="editProject(${JSON.stringify(p.name)})">Edit</button><button class="btn btn-sm danger" onclick="deleteProject(${JSON.stringify(p.name)})">Delete</button></div></div>`).join('');
+  el.innerHTML = d.map(p => `<div class="entity-card"><div><div class="name">${esc(p.name)} <span class="badge ${p.enabled?'on':'off'}">${p.enabled?'Active':'Off'}</span></div><div class="meta">${esc(p.url||'')} — ${p.actions_24h||0} actions/24h — weight: ${p.weight||1}</div></div><div class="actions-area"><button class="btn btn-sm" onclick='editProject(${JSON.stringify(p.name)})'>Edit</button><button class="btn btn-sm danger" onclick='deleteProject(${JSON.stringify(p.name)})'>Delete</button></div></div>`).join('');
 }
 
 function renderManageAccounts(d) {
@@ -1069,7 +1069,7 @@ function renderManageAccounts(d) {
       <div class="actions-area">
         ${hpBar(a.status)}
         <span class="badge ${a.status==='healthy'?'healthy':a.status==='cooldown'?'cooldown':'error'}">${esc(a.status)}</span>
-        <button class="btn btn-sm danger" onclick="removeAccount(${JSON.stringify(a.platform)},${JSON.stringify(a.username)})">Remove</button>
+        <button class="btn btn-sm danger" onclick='removeAccount(${JSON.stringify(a.platform)},${JSON.stringify(a.username)})'>Remove</button>
       </div>
     </div>`;
   }).join('');
@@ -1314,7 +1314,7 @@ function renderCookies(d) {
   el.innerHTML = filtered.map(c => {
     const ok = c.has_cookies;
     const keys = (c.key_cookies||[]).join(', ');
-    return `<div class="entity-card"><div><div class="name">@${esc(c.username)} <span style="font-family:var(--font-data);font-size:10px;color:var(--text3);text-transform:uppercase">${esc(c.platform)}</span></div><div class="meta">${ok ? `${c.count||'?'} cookies | Keys: ${keys||'none'} | ${c.size_kb||0}KB` : '<span style="color:var(--red)">No cookies — login required</span>'}</div></div><div class="actions-area"><span class="badge ${ok?'on':'off'}">${ok?'Active':'Missing'}</span>${ok?`<button class="btn btn-sm danger" onclick="deleteCookies(${JSON.stringify(c.platform)},${JSON.stringify(c.username)})">Delete</button>`:''}</div></div>`;
+    return `<div class="entity-card"><div><div class="name">@${esc(c.username)} <span style="font-family:var(--font-data);font-size:10px;color:var(--text3);text-transform:uppercase">${esc(c.platform)}</span></div><div class="meta">${ok ? `${c.count||'?'} cookies | Keys: ${keys||'none'} | ${c.size_kb||0}KB` : '<span style="color:var(--red)">No cookies — login required</span>'}</div></div><div class="actions-area"><span class="badge ${ok?'on':'off'}">${ok?'Active':'Missing'}</span>${ok?`<button class="btn btn-sm danger" onclick='deleteCookies(${JSON.stringify(c.platform)},${JSON.stringify(c.username)})'>Delete</button>`:''}</div></div>`;
   }).join('');
 }
 
