@@ -509,8 +509,7 @@ class Database:
             )
         """)
 
-
-            self.conn.commit()
+        self.conn.commit()
         logger.debug("Database tables initialized")
 
     # ── Write helpers (locked) ────────────────────────────────────────

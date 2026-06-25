@@ -214,7 +214,9 @@ class RedditWebBot(BasePlatform):
                 return False
             payload = parts[1] + "=" * (4 - len(parts[1]) % 4)
             data = json.loads(base64.urlsafe_b64decode(payload))
-            return data.get("sub", "").startswith("t2_")
+            # sub=t2_xxx (old format) OR sub=loid + lid=t2_xxx (new Reddit loid format)
+            return (data.get("sub", "").startswith("t2_") or
+                    data.get("lid", "").startswith("t2_"))
         except Exception:
             return False
 
