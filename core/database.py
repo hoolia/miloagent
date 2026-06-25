@@ -499,6 +499,16 @@ class Database:
         except Exception:
             pass
 
+        # Track subreddits where an account was banned (missing from initial schema)
+        self.conn.execute("""
+            CREATE TABLE IF NOT EXISTS account_banned_subs (
+                account TEXT NOT NULL,
+                subreddit TEXT NOT NULL,
+                reason TEXT,
+                PRIMARY KEY (account, subreddit)
+            )
+        """)
+
 
             self.conn.commit()
         logger.debug("Database tables initialized")
