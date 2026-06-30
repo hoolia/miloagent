@@ -111,6 +111,7 @@ class RedditWebBot(BasePlatform):
         self.session.mount("http://", _adapter)
         self._authenticated = False
         self._modhash = ""
+        self._oauth_token = ""   # token_v2 as Bearer for oauth.reddit.com API
 
         # CAPTCHA auto-solver (ddddocr -> tesseract -> give up)
         self._captcha_solver = RedditCaptchaSolver(self.session)
@@ -224,8 +225,9 @@ class RedditWebBot(BasePlatform):
     def _ensure_auth(self) -> bool:
         """Ensure we're authenticated for write operations.
 
-        Also fetches the modhash (CSRF token) required for all POST requests
-        to old.reddit.com/api/*.
+        Tries cookie-based auth on old.reddit.com first (gets modhash).
+        Falls back to token_v2 Bearer auth on oauth.reddit.com when cookie
+        auth is unavailable (new-Reddit sessions without reddit_session cookie).
         """
         if self._authenticated:
             try:
@@ -239,7 +241,6 @@ class RedditWebBot(BasePlatform):
                     username = data.get("data", {}).get("name")
                     if username:
                         logger.debug(f"Session valid for u/{username}")
-                        # Modhash is REQUIRED for all write operations
                         modhash = data.get("data", {}).get("modhash", "")
                         if modhash:
                             self._modhash = modhash
@@ -249,11 +250,35 @@ class RedditWebBot(BasePlatform):
                         return True
             except Exception as e:
                 logger.debug(f"Auth check failed: {e}")
-            # Session expired, try re-login
             self._authenticated = False
             logger.info("Reddit session expired, re-authenticating...")
 
-        return self._login()
+        if not self._login():
+            return False
+
+        # Cookie auth succeeded — check for token_v2 Bearer as OAuth fallback
+        # when old.reddit.com didn't return a modhash (new-Reddit sessions)
+        if not self._modhash:
+            token_v2 = self.session.cookies.get("token_v2", "")
+            if token_v2:
+                try:
+                    r = self.session.get(
+                        "https://oauth.reddit.com/api/me",
+                        headers={
+                            "Authorization": f"Bearer {token_v2}",
+                            "User-Agent": self.session.headers.get("User-Agent", _random_ua()),
+                        },
+                        timeout=10,
+                    )
+                    if r.status_code == 200 and r.json().get("data", {}).get("name"):
+                        self._oauth_token = token_v2
+                        logger.info(f"OAuth Bearer auth ready for u/{self._username}")
+                        return True
+                except Exception as e:
+                    logger.debug(f"OAuth Bearer check failed: {e}")
+            return False
+
+        return True
 
     # ── Scanning (anonymous, no auth needed) ─────────────────────────
 
@@ -715,31 +740,41 @@ class RedditWebBot(BasePlatform):
             if not fullname:
                 fullname = f"t3_{opportunity['target_id']}"
 
-            # Modhash (CSRF token) is REQUIRED for old.reddit.com API
-            if not self._modhash:
-                logger.error("No modhash available — cannot post (CSRF protection)")
+            # Use OAuth Bearer (token_v2) when available; fall back to modhash on old Reddit
+            if self._oauth_token:
+                post_data = {"thing_id": fullname, "text": comment_text, "api_type": "json"}
+                post_headers = {
+                    "Authorization": f"Bearer {self._oauth_token}",
+                    "User-Agent": self.session.headers.get("User-Agent", _random_ua()),
+                }
+                resp = self.session.post(
+                    "https://oauth.reddit.com/api/comment",
+                    data=post_data,
+                    headers=post_headers,
+                    timeout=30,
+                )
+            elif self._modhash:
+                post_data = {
+                    "thing_id": fullname,
+                    "text": comment_text,
+                    "uh": self._modhash,
+                    "api_type": "json",
+                }
+                post_headers = {
+                    "User-Agent": self.session.headers.get("User-Agent", _random_ua()),
+                    "Referer": opportunity.get("url", f"{REDDIT_OLD}/"),
+                    "Origin": REDDIT_OLD,
+                }
+                resp = self.session.post(
+                    f"{REDDIT_OLD}/api/comment",
+                    data=post_data,
+                    headers=post_headers,
+                    timeout=30,
+                )
+            else:
+                logger.error("No modhash or OAuth token available — cannot post")
                 self._consecutive_failures += 1
                 return False
-
-            post_data = {
-                "thing_id": fullname,
-                "text": comment_text,
-                "uh": self._modhash,
-                "api_type": "json",
-            }
-
-            post_headers = {
-                "User-Agent": self.session.headers.get("User-Agent", _random_ua()),
-                "Referer": opportunity.get("url", f"{REDDIT_OLD}/"),
-                "Origin": REDDIT_OLD,
-            }
-
-            resp = self.session.post(
-                f"{REDDIT_OLD}/api/comment",
-                data=post_data,
-                headers=post_headers,
-                timeout=30,
-            )
 
             logger.debug(f"Comment POST status: {resp.status_code}")
 
@@ -1191,28 +1226,37 @@ class RedditWebBot(BasePlatform):
         try:
             time.sleep(random.uniform(10, 30))
 
-            if not self._modhash:
-                logger.error("No modhash available — cannot post (CSRF protection)")
+            if self._oauth_token:
+                resp = self.session.post(
+                    "https://oauth.reddit.com/api/submit",
+                    data={
+                        "sr": subreddit, "kind": "self", "title": title,
+                        "text": body, "api_type": "json", "resubmit": "true",
+                    },
+                    headers={
+                        "Authorization": f"Bearer {self._oauth_token}",
+                        "User-Agent": self.session.headers.get("User-Agent", _random_ua()),
+                    },
+                    timeout=30,
+                )
+            elif self._modhash:
+                resp = self.session.post(
+                    f"{REDDIT_OLD}/api/submit",
+                    data={
+                        "sr": subreddit, "kind": "self", "title": title,
+                        "text": body, "uh": self._modhash,
+                        "api_type": "json", "resubmit": "true",
+                    },
+                    headers={
+                        "User-Agent": self.session.headers.get("User-Agent", _random_ua()),
+                        "Referer": f"{REDDIT_OLD}/r/{subreddit}/submit",
+                        "Origin": REDDIT_OLD,
+                    },
+                    timeout=30,
+                )
+            else:
+                logger.error("No modhash or OAuth token available — cannot submit post")
                 return None
-
-            resp = self.session.post(
-                f"{REDDIT_OLD}/api/submit",
-                data={
-                    "sr": subreddit,
-                    "kind": "self",
-                    "title": title,
-                    "text": body,
-                    "uh": self._modhash,
-                    "api_type": "json",
-                    "resubmit": "true",
-                },
-                headers={
-                    "User-Agent": self.session.headers.get("User-Agent", _random_ua()),
-                    "Referer": f"{REDDIT_OLD}/r/{subreddit}/submit",
-                    "Origin": REDDIT_OLD,
-                },
-                timeout=30,
-            )
 
             if resp.status_code == 429:
                 logger.warning("Rate limited on post creation")
@@ -1347,25 +1391,32 @@ class RedditWebBot(BasePlatform):
         """Upvote a post or comment. thing_id must include prefix (t3_ or t1_)."""
         if not self._ensure_auth():
             return False
-        if not self._modhash:
-            logger.warning("No modhash, cannot upvote")
+        if not self._modhash and not self._oauth_token:
+            logger.warning("No modhash or OAuth token, cannot upvote")
             return False
 
         try:
-            resp = self.session.post(
-                f"{REDDIT_OLD}/api/vote",
-                data={
-                    "id": thing_id,
-                    "dir": 1,
-                    "uh": self._modhash,
-                },
-                headers={
-                    "User-Agent": self.session.headers.get("User-Agent", _random_ua()),
-                    "Referer": f"{REDDIT_OLD}/",
-                    "Origin": REDDIT_OLD,
-                },
-                timeout=15,
-            )
+            if self._oauth_token:
+                resp = self.session.post(
+                    "https://oauth.reddit.com/api/vote",
+                    data={"id": thing_id, "dir": 1},
+                    headers={
+                        "Authorization": f"Bearer {self._oauth_token}",
+                        "User-Agent": self.session.headers.get("User-Agent", _random_ua()),
+                    },
+                    timeout=15,
+                )
+            else:
+                resp = self.session.post(
+                    f"{REDDIT_OLD}/api/vote",
+                    data={"id": thing_id, "dir": 1, "uh": self._modhash},
+                    headers={
+                        "User-Agent": self.session.headers.get("User-Agent", _random_ua()),
+                        "Referer": f"{REDDIT_OLD}/",
+                        "Origin": REDDIT_OLD,
+                    },
+                    timeout=15,
+                )
             if resp.status_code == 200:
                 logger.debug(f"Upvoted {thing_id}")
                 self.db.log_action(
