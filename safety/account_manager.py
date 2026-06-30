@@ -77,12 +77,17 @@ class AccountManager:
                 key = f"{row['platform']}:{row['account']}"
                 status = row["status"]
                 if status == self.COOLDOWN:
-                    # Restore cooldown with platform-appropriate duration
+                    # Restore cooldown with the actual duration from notes field
                     try:
                         ts = datetime.fromisoformat(row["timestamp"])
-                        # Use shorter cooldown for Telegram (usually 3-5min)
                         platform = row["platform"]
-                        if platform == "telegram":
+                        # Parse duration from "Cooldown for Nmin" notes; fall back to defaults
+                        import re as _re
+                        notes = row["notes"] or ""
+                        _m = _re.search(r"Cooldown for (\d+)min", notes)
+                        if _m:
+                            cooldown_min = int(_m.group(1))
+                        elif platform == "telegram":
                             cooldown_min = 5
                         else:
                             cooldown_min = 15
