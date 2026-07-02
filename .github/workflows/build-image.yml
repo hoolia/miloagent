@@ -13,6 +13,8 @@ permissions:
 jobs:
   build:
     runs-on: ubuntu-latest
+    outputs:
+      short-sha: ${{ steps.sha.outputs.short }}
     steps:
       - uses: actions/checkout@v4
 
@@ -25,6 +27,10 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: Short SHA
+        id: sha
+        run: echo "short=${GITHUB_SHA::7}" >> $GITHUB_OUTPUT
+
       - name: Image metadata
         id: meta
         uses: docker/metadata-action@v5
@@ -33,7 +39,7 @@ jobs:
           images: ghcr.io/${{ github.repository_owner }}/miloagent
           tags: |
             type=raw,value=latest,enable={{is_default_branch}}
-            type=sha,format=long
+            type=sha,format=short
             type=ref,event=tag
 
       - name: Build and push
@@ -45,3 +51,38 @@ jobs:
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
+
+  update-deploy:
+    needs: build
+    # Only bump the deploy tag on main branch pushes (not tags, not PRs)
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout openshift-config
+        uses: actions/checkout@v4
+        with:
+          repository: hoolia/openshift-config
+          token: ${{ secrets.OPENSHIFT_CONFIG_TOKEN }}
+
+      - name: Bump image tag in application-miloagent.yaml
+        run: |
+          SHORT="${{ needs.build.outputs.short-sha }}"
+          sed -i "s|          tag: .*|          tag: sha-${SHORT}|" \
+            users/grncloud/application-miloagent.yaml
+
+      - name: Open PR in openshift-config
+        uses: peter-evans/create-pull-request@v7
+        with:
+          token: ${{ secrets.OPENSHIFT_CONFIG_TOKEN }}
+          commit-message: "chore: Bump miloagent image to sha-${{ needs.build.outputs.short-sha }}"
+          branch: chore/miloagent-image-sha-${{ needs.build.outputs.short-sha }}
+          delete-branch: true
+          title: "chore: Bump miloagent image to sha-${{ needs.build.outputs.short-sha }}"
+          body: |
+            Automated image tag bump triggered by [hoolia/miloagent@${{ github.sha }}](https://github.com/hoolia/miloagent/commit/${{ github.sha }}).
+
+            **Image**: `ghcr.io/hoolia/miloagent:sha-${{ needs.build.outputs.short-sha }}`
+
+            Merging this PR will cause ArgoCD to roll the pod with the new image.
+          reviewers: sterburg
+          assignees: sterburg
