@@ -54,35 +54,24 @@ jobs:
 
   update-deploy:
     needs: build
-    # Only bump the deploy tag on main branch pushes (not tags, not PRs)
+    # Only fire on main branch pushes (not tags, not PRs)
     if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout openshift-config
-        uses: actions/checkout@v4
-        with:
-          repository: hoolia/openshift-config
-          token: ${{ secrets.OPENSHIFT_CONFIG_TOKEN }}
-
-      - name: Bump image tag in application-miloagent.yaml
+      # Dispatch to hoolia/openshift-config (private). All git work happens there
+      # using its own GITHUB_TOKEN — no repo-write PAT stored in this public repo.
+      # Token needed here: fine-grained PAT scoped only to hoolia/openshift-config
+      # with "Contents: Write" permission (required for repository_dispatch).
+      - name: Trigger image update in openshift-config
         run: |
-          SHORT="${{ needs.build.outputs.short-sha }}"
-          sed -i "s|          tag: .*|          tag: sha-${SHORT}|" \
-            users/grncloud/application-miloagent.yaml
-
-      - name: Open PR in openshift-config
-        uses: peter-evans/create-pull-request@v7
-        with:
-          token: ${{ secrets.OPENSHIFT_CONFIG_TOKEN }}
-          commit-message: "chore: Bump miloagent image to sha-${{ needs.build.outputs.short-sha }}"
-          branch: chore/miloagent-image-sha-${{ needs.build.outputs.short-sha }}
-          delete-branch: true
-          title: "chore: Bump miloagent image to sha-${{ needs.build.outputs.short-sha }}"
-          body: |
-            Automated image tag bump triggered by [hoolia/miloagent@${{ github.sha }}](https://github.com/hoolia/miloagent/commit/${{ github.sha }}).
-
-            **Image**: `ghcr.io/hoolia/miloagent:sha-${{ needs.build.outputs.short-sha }}`
-
-            Merging this PR will cause ArgoCD to roll the pod with the new image.
-          reviewers: sterburg
-          assignees: sterburg
+          curl -fsSX POST \
+            -H "Authorization: token ${{ secrets.OPENSHIFT_CONFIG_DISPATCH_TOKEN }}" \
+            -H "Accept: application/vnd.github.v3+json" \
+            https://api.github.com/repos/hoolia/openshift-config/dispatches \
+            -d "{
+              \"event_type\": \"miloagent-image-push\",
+              \"client_payload\": {
+                \"sha\": \"${{ needs.build.outputs.short-sha }}\",
+                \"commit_url\": \"https://github.com/hoolia/miloagent/commit/${{ github.sha }}\"
+              }
+            }"
