@@ -254,7 +254,17 @@ class RedditWebBot(BasePlatform):
             logger.info("Reddit session expired, re-authenticating...")
 
         if not self._login():
-            return False
+            # Cookies missing or expired — try Playwright auto-relogin if password known
+            if self._password:
+                logger.info(f"Attempting Playwright auto-relogin for u/{self._username}...")
+                if self._playwright_relogin():
+                    self._load_cookies()
+                    if not self._login():
+                        return False
+                else:
+                    return False
+            else:
+                return False
 
         # Cookie auth succeeded — check for token_v2 Bearer as OAuth fallback
         # when old.reddit.com didn't return a modhash (new-Reddit sessions)
@@ -274,11 +284,118 @@ class RedditWebBot(BasePlatform):
                         self._oauth_token = token_v2
                         logger.info(f"OAuth Bearer auth ready for u/{self._username}")
                         return True
+                    # OAuth check failed — token invalid, try relogin if possible
+                    logger.warning("OAuth Bearer check failed — token may be expired")
+                    if self._password:
+                        logger.info(f"Token expired, Playwright relogin for u/{self._username}...")
+                        if self._playwright_relogin():
+                            self._load_cookies()
+                            new_token = self.session.cookies.get("token_v2", "")
+                            if new_token and self._is_token_v2_logged_in(new_token):
+                                self._oauth_token = new_token
+                                logger.info(f"OAuth Bearer refreshed for u/{self._username}")
+                                return True
                 except Exception as e:
                     logger.debug(f"OAuth Bearer check failed: {e}")
             return False
 
         return True
+
+    def _playwright_relogin(self) -> bool:
+        """Headless Playwright login — fills credentials, extracts fresh cookies.
+
+        Uses the Chromium headless-shell bundled with Playwright (already in
+        the container at /app/pw-browsers/). No interactive prompt required.
+        Saves fresh cookies to self._cookies_file on success.
+        """
+        try:
+            from playwright.sync_api import sync_playwright, TimeoutError as PWTimeout
+        except ImportError:
+            logger.error("Playwright not installed — cannot auto-relogin")
+            return False
+
+        logger.info(f"Playwright headless login starting for u/{self._username}")
+        try:
+            with sync_playwright() as pw:
+                browser = pw.chromium.launch(
+                    headless=True,
+                    args=["--no-sandbox", "--disable-dev-shm-usage"],
+                )
+                context = browser.new_context(
+                    user_agent="Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
+                               "AppleWebKit/537.36 (KHTML, like Gecko) "
+                               "Chrome/120.0.0.0 Safari/537.36",
+                    viewport={"width": 1280, "height": 800},
+                )
+                page = context.new_page()
+
+                # Step 1: open login page
+                page.goto("https://www.reddit.com/login/", wait_until="domcontentloaded", timeout=30000)
+                time.sleep(2)
+
+                # Step 2: fill credentials
+                page.fill('input[name="username"]', self._username)
+                time.sleep(0.5)
+                page.fill('input[name="password"]', self._password)
+                time.sleep(0.5)
+                page.keyboard.press("Enter")
+
+                # Step 3: wait for redirect away from /login (success) or error
+                try:
+                    page.wait_for_url(
+                        lambda u: "/login" not in u,
+                        timeout=20000,
+                    )
+                except PWTimeout:
+                    # Check if there's an error message on page
+                    page_text = page.inner_text("body") if page else ""
+                    if "incorrect" in page_text.lower() or "wrong" in page_text.lower():
+                        logger.error(f"Playwright login failed: wrong password for u/{self._username}")
+                    else:
+                        logger.error("Playwright login timed out waiting for redirect")
+                    browser.close()
+                    return False
+
+                time.sleep(2)
+
+                # Step 4: grab cookies from browser context
+                browser_cookies = context.cookies()
+                cookie_dict = {
+                    c["name"]: c["value"]
+                    for c in browser_cookies
+                    if "reddit.com" in c.get("domain", "")
+                }
+                browser.close()
+
+                # Validate we got an authenticated token
+                token = cookie_dict.get("token_v2", "")
+                if not token or not self._is_token_v2_logged_in(token):
+                    logger.error("Playwright login: no valid token_v2 in cookies after login")
+                    return False
+
+                # Save to disk (atomic write)
+                cookie_dict.pop("reddit_session", None)  # keep clean — use OAuth Bearer path
+                tmp = self._cookies_file + ".tmp"
+                os.makedirs(os.path.dirname(self._cookies_file), exist_ok=True)
+                with open(tmp, "w") as f:
+                    json.dump(cookie_dict, f)
+                os.replace(tmp, self._cookies_file)
+
+                import base64 as _b64
+                parts = token.split(".")
+                pad = parts[1] + "=" * (4 - len(parts[1]) % 4)
+                exp = json.loads(_b64.urlsafe_b64decode(pad)).get("exp", 0)
+                import datetime as _dt
+                exp_dt = _dt.datetime.fromtimestamp(exp, tz=_dt.timezone.utc)
+                logger.info(
+                    f"Playwright relogin success for u/{self._username} "
+                    f"— token valid until {exp_dt.strftime('%Y-%m-%d %H:%M UTC')}"
+                )
+                return True
+
+        except Exception as e:
+            logger.error(f"Playwright relogin error: {e}")
+            return False
 
     # ── Scanning (anonymous, no auth needed) ─────────────────────────
 
