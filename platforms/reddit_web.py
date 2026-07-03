@@ -329,30 +329,48 @@ class RedditWebBot(BasePlatform):
                 )
                 page = context.new_page()
 
-                # Step 1: open login page
+                # Step 1: open login page; wait for the SPA to render the form
                 page.goto("https://www.reddit.com/login/", wait_until="domcontentloaded", timeout=30000)
-                time.sleep(2)
+                try:
+                    page.wait_for_selector('input[name="username"]', timeout=15000)
+                except PWTimeout:
+                    logger.error(
+                        f"Playwright login: username field not found — "
+                        f"URL={page.url!r}, title={page.title()!r}"
+                    )
+                    browser.close()
+                    return False
 
-                # Step 2: fill credentials
-                page.fill('input[name="username"]', self._username)
-                time.sleep(0.5)
-                page.fill('input[name="password"]', self._password)
-                time.sleep(0.5)
-                page.keyboard.press("Enter")
+                # Step 2: fill credentials — click first so React registers the interaction
+                page.locator('input[name="username"]').click()
+                page.locator('input[name="username"]').fill(self._username)
+                time.sleep(0.3)
+                page.locator('input[name="password"]').click()
+                page.locator('input[name="password"]').fill(self._password)
+                time.sleep(0.3)
 
-                # Step 3: wait for redirect away from /login (success) or error
+                # Step 3: submit — prefer button click; fall back to Enter key
+                submit_btn = page.locator('button[type="submit"]')
+                if submit_btn.count() > 0:
+                    submit_btn.first.click()
+                else:
+                    page.keyboard.press("Enter")
+
+                # Step 4: wait for redirect away from /login (success) or error
                 try:
                     page.wait_for_url(
                         lambda u: "/login" not in u,
                         timeout=20000,
                     )
                 except PWTimeout:
-                    # Check if there's an error message on page
                     page_text = page.inner_text("body") if page else ""
                     if "incorrect" in page_text.lower() or "wrong" in page_text.lower():
                         logger.error(f"Playwright login failed: wrong password for u/{self._username}")
                     else:
-                        logger.error("Playwright login timed out waiting for redirect")
+                        logger.error(
+                            f"Playwright login timed out — URL={page.url!r}, "
+                            f"page_snippet={page_text[:300]!r}"
+                        )
                     browser.close()
                     return False
 
