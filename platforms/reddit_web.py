@@ -368,13 +368,25 @@ class RedditWebBot(BasePlatform):
                             f"URL={pg.url!r}, title={pg.title()!r}"
                         )
                         return False
+                    # Dismiss cookie consent banner before interacting with the form.
+                    try:
+                        cookie_btn = pg.locator('button:has-text("Accept All")')
+                        if cookie_btn.count() > 0:
+                            cookie_btn.first.click()
+                            time.sleep(0.5)
+                    except Exception:
+                        pass
                     pg.locator('input[name="username"]').click()
                     pg.locator('input[name="username"]').fill(self._username)
                     time.sleep(0.5)
                     pg.locator('input[name="password"]').click()
                     pg.locator('input[name="password"]').fill(self._password)
                     time.sleep(0.8)
-                    btn = pg.locator('button[type="submit"]')
+                    # Reddit's "Log In" button is type="button", not type="submit".
+                    # Prefer role-based selector; fall back to type="submit" for future changes.
+                    btn = pg.get_by_role("button", name="Log In")
+                    if btn.count() == 0:
+                        btn = pg.locator('button[type="submit"]')
                     if btn.count() > 0:
                         btn.first.click()
                     else:
