@@ -393,14 +393,12 @@ class RedditWebBot(BasePlatform):
 
                 # Step 1: warm up session — visit homepage first so we don't arrive
                 # at /login/ cold (a direct cold hit is a bot signal to Reddit).
-                try:
-                    page.goto("https://www.reddit.com", wait_until="domcontentloaded", timeout=15000)
-                    time.sleep(1.5)
-                except Exception:
-                    pass  # non-fatal; continue to login
-
-                # Step 2: open login page
+                # Open login page directly — do NOT visit reddit.com first.
+                # A warmup visit sets session state that causes Reddit's login
+                # page to switch to passkey/WebAuthn mode instead of password
+                # mode, which breaks the password login flow entirely.
                 page.goto("https://www.reddit.com/login/", wait_until="domcontentloaded", timeout=30000)
+                time.sleep(2)  # allow React hydration to complete before filling
                 if not _fill_and_submit(page):
                     browser.close()
                     return False
