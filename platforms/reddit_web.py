@@ -380,11 +380,13 @@ class RedditWebBot(BasePlatform):
                     time.sleep(0.8)
                     # Reddit's "Log In" button is type="button", not type="submit".
                     # Prefer role-based selector; fall back to type="submit" for future changes.
+                    # force=True bypasses Playwright's overlap check — the cookie consent
+                    # banner floats over the page and would otherwise block the click.
                     btn = pg.get_by_role("button", name="Log In")
                     if btn.count() == 0:
                         btn = pg.locator('button[type="submit"]')
                     if btn.count() > 0:
-                        btn.first.click()
+                        btn.first.click(force=True)
                     else:
                         pg.keyboard.press("Enter")
                     return True
