@@ -437,12 +437,34 @@ class RedditWebBot(BasePlatform):
                     )
                 except PWTimeout:
                     page_text = page.inner_text("body") if page else ""
-                    if "incorrect" in page_text.lower() or "wrong" in page_text.lower():
-                        logger.error(f"Playwright login failed: wrong password for u/{self._username}")
+                    # Reddit's error banner lives inside a Shadow DOM — inner_text()
+                    # won't capture it; pierce all shadow roots to find it.
+                    shadow_text = ""
+                    try:
+                        shadow_text = page.evaluate("""() => {
+                            function allText(root) {
+                                let t = '';
+                                root.querySelectorAll('*').forEach(el => {
+                                    if (el.shadowRoot) t += allText(el.shadowRoot);
+                                    if (el.childNodes) el.childNodes.forEach(n => {
+                                        if (n.nodeType === 3) t += n.textContent + ' ';
+                                    });
+                                });
+                                return t;
+                            }
+                            return allText(document);
+                        }""")
+                    except Exception:
+                        pass
+                    combined = (page_text + " " + shadow_text).lower()
+                    if "incorrect" in combined or "wrong password" in combined or "suspended" in combined:
+                        logger.error(f"Playwright login failed: bad credentials or account suspended for u/{self._username} — banner={shadow_text[:200]!r}")
+                    elif "captcha" in combined or "verify" in combined:
+                        logger.error(f"Playwright login blocked by CAPTCHA/verify for u/{self._username}")
                     else:
                         logger.error(
                             f"Playwright login timed out — URL={page.url!r}, "
-                            f"page_snippet={page_text[:800]!r}"
+                            f"page_snippet={page_text[:400]!r}, shadow={shadow_text[:400]!r}"
                         )
                     browser.close()
                     return False
