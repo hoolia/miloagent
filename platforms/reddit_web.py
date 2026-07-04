@@ -368,14 +368,10 @@ class RedditWebBot(BasePlatform):
                             f"URL={pg.url!r}, title={pg.title()!r}"
                         )
                         return False
-                    # Dismiss cookie consent banner before interacting with the form.
-                    try:
-                        cookie_btn = pg.locator('button:has-text("Accept All")')
-                        if cookie_btn.count() > 0:
-                            cookie_btn.first.click()
-                            time.sleep(0.5)
-                    except Exception:
-                        pass
+                    # NOTE: do NOT click the cookie consent banner here.
+                    # Clicking 'Accept All' causes React to re-mount the login
+                    # component, which detaches the submit handler — the button
+                    # click then fires but produces no network request at all.
                     pg.locator('input[name="username"]').click()
                     pg.locator('input[name="username"]').fill(self._username)
                     time.sleep(0.5)
