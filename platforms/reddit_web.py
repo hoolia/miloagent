@@ -319,60 +319,100 @@ class RedditWebBot(BasePlatform):
             with sync_playwright() as pw:
                 browser = pw.chromium.launch(
                     headless=True,
-                    args=["--no-sandbox", "--disable-dev-shm-usage"],
+                    args=[
+                        "--no-sandbox",
+                        "--disable-dev-shm-usage",
+                        # Suppress the navigator.webdriver flag that Reddit detects
+                        "--disable-blink-features=AutomationControlled",
+                    ],
                 )
                 context = browser.new_context(
                     user_agent="Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
                                "AppleWebKit/537.36 (KHTML, like Gecko) "
                                "Chrome/120.0.0.0 Safari/537.36",
                     viewport={"width": 1280, "height": 800},
+                    locale="en-US",
+                    timezone_id="America/New_York",
+                    extra_http_headers={"Accept-Language": "en-US,en;q=0.9"},
                 )
                 page = context.new_page()
+                # Patch navigator fingerprint before any page loads
+                page.add_init_script("""
+                    Object.defineProperty(navigator, 'webdriver', {get: () => undefined});
+                    Object.defineProperty(navigator, 'plugins', {get: () => [1, 2, 3]});
+                    Object.defineProperty(navigator, 'languages', {get: () => ['en-US', 'en']});
+                    window.chrome = {runtime: {}};
+                """)
 
-                # Step 1: open login page; wait for the SPA to render the form
+                def _fill_and_submit(pg):
+                    """Fill credentials and submit. Returns False if form not found."""
+                    try:
+                        pg.wait_for_selector('input[name="username"]', timeout=15000)
+                    except PWTimeout:
+                        logger.error(
+                            f"Playwright login: username field not found — "
+                            f"URL={pg.url!r}, title={pg.title()!r}"
+                        )
+                        return False
+                    pg.locator('input[name="username"]').click()
+                    pg.locator('input[name="username"]').fill(self._username)
+                    time.sleep(0.3)
+                    pg.locator('input[name="password"]').click()
+                    pg.locator('input[name="password"]').fill(self._password)
+                    time.sleep(0.5)
+                    btn = pg.locator('button[type="submit"]')
+                    if btn.count() > 0:
+                        btn.first.click()
+                    else:
+                        pg.keyboard.press("Enter")
+                    return True
+
+                # Step 1: open login page
                 page.goto("https://www.reddit.com/login/", wait_until="domcontentloaded", timeout=30000)
-                try:
-                    page.wait_for_selector('input[name="username"]', timeout=15000)
-                except PWTimeout:
-                    logger.error(
-                        f"Playwright login: username field not found — "
-                        f"URL={page.url!r}, title={page.title()!r}"
-                    )
+                if not _fill_and_submit(page):
                     browser.close()
                     return False
 
-                # Step 2: fill credentials — click first so React registers the interaction
-                page.locator('input[name="username"]').click()
-                page.locator('input[name="username"]').fill(self._username)
-                time.sleep(0.3)
-                page.locator('input[name="password"]').click()
-                page.locator('input[name="password"]').fill(self._password)
-                time.sleep(0.3)
-
-                # Step 3: submit — prefer button click; fall back to Enter key
-                submit_btn = page.locator('button[type="submit"]')
-                if submit_btn.count() > 0:
-                    submit_btn.first.click()
-                else:
-                    page.keyboard.press("Enter")
-
                 # Step 4: wait for redirect away from /login (success) or error
+                # Reddit may bounce back through a js_challenge URL that still
+                # contains /login — detect that and retry the form once.
                 try:
                     page.wait_for_url(
                         lambda u: "/login" not in u,
                         timeout=20000,
                     )
                 except PWTimeout:
-                    page_text = page.inner_text("body") if page else ""
-                    if "incorrect" in page_text.lower() or "wrong" in page_text.lower():
-                        logger.error(f"Playwright login failed: wrong password for u/{self._username}")
+                    # Reddit may serve a js_challenge that loads the login form again.
+                    # If the form is present, fill and submit one more time.
+                    if "js_challenge" in page.url and page.locator('input[name="username"]').count() > 0:
+                        logger.info("Playwright: Reddit js_challenge detected, retrying form fill...")
+                        if not _fill_and_submit(page):
+                            browser.close()
+                            return False
+                        try:
+                            page.wait_for_url(
+                                lambda u: "/login" not in u,
+                                timeout=25000,
+                            )
+                        except PWTimeout:
+                            page_text = page.inner_text("body") if page else ""
+                            logger.error(
+                                f"Playwright login timed out after js_challenge retry — URL={page.url!r}, "
+                                f"page_snippet={page_text[:300]!r}"
+                            )
+                            browser.close()
+                            return False
                     else:
-                        logger.error(
-                            f"Playwright login timed out — URL={page.url!r}, "
-                            f"page_snippet={page_text[:300]!r}"
-                        )
-                    browser.close()
-                    return False
+                        page_text = page.inner_text("body") if page else ""
+                        if "incorrect" in page_text.lower() or "wrong" in page_text.lower():
+                            logger.error(f"Playwright login failed: wrong password for u/{self._username}")
+                        else:
+                            logger.error(
+                                f"Playwright login timed out — URL={page.url!r}, "
+                                f"page_snippet={page_text[:300]!r}"
+                            )
+                        browser.close()
+                        return False
 
                 time.sleep(2)
 
