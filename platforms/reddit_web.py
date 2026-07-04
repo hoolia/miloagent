@@ -322,26 +322,40 @@ class RedditWebBot(BasePlatform):
                     args=[
                         "--no-sandbox",
                         "--disable-dev-shm-usage",
-                        # Suppress the navigator.webdriver flag that Reddit detects
                         "--disable-blink-features=AutomationControlled",
+                        "--headless=new",           # new headless mode — closer to real Chrome
+                        "--disable-features=IsolateOrigins,site-per-process",
+                        "--window-size=1280,800",
                     ],
                 )
                 context = browser.new_context(
                     user_agent="Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
                                "AppleWebKit/537.36 (KHTML, like Gecko) "
-                               "Chrome/120.0.0.0 Safari/537.36",
+                               "Chrome/131.0.0.0 Safari/537.36",
                     viewport={"width": 1280, "height": 800},
                     locale="en-US",
                     timezone_id="America/New_York",
+                    color_scheme="light",
                     extra_http_headers={"Accept-Language": "en-US,en;q=0.9"},
                 )
                 page = context.new_page()
-                # Patch navigator fingerprint before any page loads
+                # Comprehensive fingerprint patches applied before every page load
                 page.add_init_script("""
                     Object.defineProperty(navigator, 'webdriver', {get: () => undefined});
-                    Object.defineProperty(navigator, 'plugins', {get: () => [1, 2, 3]});
+                    Object.defineProperty(navigator, 'plugins', {get: () => [1, 2, 3, 4, 5]});
                     Object.defineProperty(navigator, 'languages', {get: () => ['en-US', 'en']});
-                    window.chrome = {runtime: {}};
+                    Object.defineProperty(navigator, 'hardwareConcurrency', {get: () => 4});
+                    Object.defineProperty(navigator, 'deviceMemory', {get: () => 8});
+                    Object.defineProperty(screen, 'colorDepth', {get: () => 24});
+                    Object.defineProperty(screen, 'pixelDepth', {get: () => 24});
+                    window.chrome = {
+                        runtime: {},
+                        loadTimes: function() {},
+                        csi: function() {},
+                        app: {}
+                    };
+                    try { delete window.__playwright; } catch(e) {}
+                    try { delete window.__pwInitScripts; } catch(e) {}
                 """)
 
                 def _fill_and_submit(pg):
@@ -356,10 +370,10 @@ class RedditWebBot(BasePlatform):
                         return False
                     pg.locator('input[name="username"]').click()
                     pg.locator('input[name="username"]').fill(self._username)
-                    time.sleep(0.3)
+                    time.sleep(0.5)
                     pg.locator('input[name="password"]').click()
                     pg.locator('input[name="password"]').fill(self._password)
-                    time.sleep(0.5)
+                    time.sleep(0.8)
                     btn = pg.locator('button[type="submit"]')
                     if btn.count() > 0:
                         btn.first.click()
@@ -367,7 +381,15 @@ class RedditWebBot(BasePlatform):
                         pg.keyboard.press("Enter")
                     return True
 
-                # Step 1: open login page
+                # Step 1: warm up session — visit homepage first so we don't arrive
+                # at /login/ cold (a direct cold hit is a bot signal to Reddit).
+                try:
+                    page.goto("https://www.reddit.com", wait_until="domcontentloaded", timeout=15000)
+                    time.sleep(1.5)
+                except Exception:
+                    pass  # non-fatal; continue to login
+
+                # Step 2: open login page
                 page.goto("https://www.reddit.com/login/", wait_until="domcontentloaded", timeout=30000)
                 if not _fill_and_submit(page):
                     browser.close()
