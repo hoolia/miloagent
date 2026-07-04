@@ -407,46 +407,45 @@ class RedditWebBot(BasePlatform):
                     browser.close()
                     return False
 
-                # Step 4: wait for redirect away from /login (success) or error
-                # Reddit may bounce back through a js_challenge URL that still
-                # contains /login — detect that and retry the form once.
-                try:
-                    page.wait_for_url(
-                        lambda u: "/login" not in u,
-                        timeout=20000,
-                    )
-                except PWTimeout:
-                    # Reddit may serve a js_challenge that loads the login form again.
-                    # If the form is present, fill and submit one more time.
-                    if "js_challenge" in page.url and page.locator('input[name="username"]').count() > 0:
-                        logger.info("Playwright: Reddit js_challenge detected, retrying form fill...")
+                # Step 3: Reddit fires a js_challenge within ~3 s of form submit.
+                # Check early — by the time a 20 s wait_for_url times out the
+                # challenge URL is already gone and the check misses it.
+                time.sleep(3)
+                if "js_challenge" in page.url:
+                    logger.info("Playwright: js_challenge fired immediately — waiting for it to resolve...")
+                    try:
+                        # The challenge runs JS in the browser; wait for the URL to
+                        # drop the js_challenge param (resolution takes ~2-8 s).
+                        page.wait_for_url(lambda u: "js_challenge" not in u, timeout=15000)
+                    except PWTimeout:
+                        pass
+                    time.sleep(1)
+                    # After resolution Reddit usually re-shows the login form.
+                    # Refill and re-submit if that's the case.
+                    if "/login" in page.url and page.locator('input[name="username"]').count() > 0:
+                        logger.info("Playwright: post-challenge login form appeared — refilling...")
                         if not _fill_and_submit(page):
                             browser.close()
                             return False
-                        try:
-                            page.wait_for_url(
-                                lambda u: "/login" not in u,
-                                timeout=25000,
-                            )
-                        except PWTimeout:
-                            page_text = page.inner_text("body") if page else ""
-                            logger.error(
-                                f"Playwright login timed out after js_challenge retry — URL={page.url!r}, "
-                                f"page_snippet={page_text[:300]!r}"
-                            )
-                            browser.close()
-                            return False
+                        time.sleep(3)  # let another potential js_challenge fire and resolve
+
+                # Step 4: wait for redirect away from /login/ (success)
+                try:
+                    page.wait_for_url(
+                        lambda u: "/login" not in u,
+                        timeout=25000,
+                    )
+                except PWTimeout:
+                    page_text = page.inner_text("body") if page else ""
+                    if "incorrect" in page_text.lower() or "wrong" in page_text.lower():
+                        logger.error(f"Playwright login failed: wrong password for u/{self._username}")
                     else:
-                        page_text = page.inner_text("body") if page else ""
-                        if "incorrect" in page_text.lower() or "wrong" in page_text.lower():
-                            logger.error(f"Playwright login failed: wrong password for u/{self._username}")
-                        else:
-                            logger.error(
-                                f"Playwright login timed out — URL={page.url!r}, "
-                                f"page_snippet={page_text[:300]!r}"
-                            )
-                        browser.close()
-                        return False
+                        logger.error(
+                            f"Playwright login timed out — URL={page.url!r}, "
+                            f"page_snippet={page_text[:800]!r}"
+                        )
+                    browser.close()
+                    return False
 
                 time.sleep(2)
 
