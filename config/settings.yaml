@@ -10,6 +10,7 @@ bot:
   max_actions_per_hour: 6      # Total across all accounts (was 12)
   organic_promo_ratio: 0.95    # 95% organic, 5% promotional max
   log_level: "INFO"
+  manual_approval: false       # true = queue drafts for human review before posting
 
 scheduling:
   background:

@@ -1000,6 +1000,67 @@ h1{{color:#ff6b35}}p{{color:#a0a0c0}}</style></head>
             except Exception as e:
                 return {"error": str(e)}
 
+        # ── GET /api/queue — human-approval queue ────────────
+        @app.get("/api/queue")
+        async def get_approval_queue(_=Depends(self._verify_token)):
+            try:
+                return self.orch.db.get_awaiting_approval(limit=50)
+            except Exception as e:
+                return {"error": str(e)}
+
+        # ── POST /api/queue/{opp_id}/approve ─────────────────
+        @app.post("/api/queue/{opp_id}/approve")
+        async def approve_queued_action(opp_id: int, request: Request, _=Depends(self._verify_token)):
+            try:
+                body = await request.json()
+                response_text = (body.get("response") or "").strip()
+                if not response_text:
+                    raise HTTPException(status_code=400, detail="response text is required")
+                row = self.orch.db.conn.execute(
+                    "SELECT * FROM opportunities WHERE id = ? AND status = 'awaiting_approval'",
+                    (opp_id,),
+                ).fetchone()
+                if not row:
+                    raise HTTPException(status_code=404, detail="Queued opportunity not found")
+                opp = dict(row)
+                if "subreddit_or_query" in opp and "subreddit" not in opp:
+                    opp["subreddit"] = opp["subreddit_or_query"]
+                if "body" not in opp:
+                    opp["body"] = ""
+                # Find the account and bot for this opportunity's project
+                project_objs = self.orch.project_mgr.get_projects()
+                proj_obj = next(
+                    (p for p in project_objs if p.get("project", {}).get("name") == opp.get("project")),
+                    project_objs[0] if project_objs else {},
+                )
+                account = self.orch.account_mgr.get_next_account("reddit", project=opp.get("project"))
+                if not account:
+                    raise HTTPException(status_code=503, detail="No Reddit account available")
+                bot = self.orch._get_reddit_bot(account)
+                success = bot.post_draft(opp, proj_obj, response_text)
+                if success:
+                    self.orch.rate_limiter.record_action(account["username"], "reddit")
+                    self.orch.account_mgr.mark_healthy("reddit", account["username"])
+                    return {"ok": True}
+                raise HTTPException(status_code=500, detail="Post failed — check logs")
+            except HTTPException:
+                raise
+            except Exception as e:
+                raise HTTPException(status_code=500, detail=str(e))
+
+        # ── POST /api/queue/{opp_id}/reject ──────────────────
+        @app.post("/api/queue/{opp_id}/reject")
+        async def reject_queued_action(opp_id: int, _=Depends(self._verify_token)):
+            try:
+                self.orch.db.conn.execute(
+                    "UPDATE opportunities SET status = 'skipped', rejection_reason = 'user_rejected' WHERE id = ?",
+                    (opp_id,),
+                )
+                self.orch.db.conn.commit()
+                return {"ok": True}
+            except Exception as e:
+                raise HTTPException(status_code=500, detail=str(e))
+
         # ── GET /api/decisions ──────────────────────────────
         @app.get("/api/decisions")
         async def get_recent_decisions(
@@ -1794,6 +1855,7 @@ h1{{color:#ff6b35}}p{{color:#a0a0c0}}</style></head>
                         "reddit_proxy": bool(settings.get("http", {}).get("reddit_proxy")),
                     },
                     "promotion_rate": settings.get("promotion_rate", 0.3),
+                    "manual_approval": settings.get("bot", {}).get("manual_approval", False),
                     "llm_providers": [
                         p.get("name", "?") for p in settings.get("llm_providers", [])
                     ],
@@ -1811,6 +1873,7 @@ h1{{color:#ff6b35}}p{{color:#a0a0c0}}</style></head>
                 allowed_keys = {
                     "scan_interval_minutes", "action_interval_minutes",
                     "promotion_rate", "active_hours", "rate_limits",
+                    "manual_approval",
                 }
                 settings_path = os.path.join(
                     os.path.dirname(os.path.dirname(__file__)),
@@ -1820,9 +1883,15 @@ h1{{color:#ff6b35}}p{{color:#a0a0c0}}</style></head>
                     current = yaml.safe_load(f) or {}
                 changed = []
                 for key, value in body.items():
-                    if key in allowed_keys:
+                    if key not in allowed_keys:
+                        continue
+                    if key == "manual_approval":
+                        # stored under bot: section
+                        current.setdefault("bot", {})["manual_approval"] = bool(value)
+                        self.orch.settings.setdefault("bot", {})["manual_approval"] = bool(value)
+                    else:
                         current[key] = value
-                        changed.append(key)
+                    changed.append(key)
                 if changed:
                     with open(settings_path, "w") as f:
                         yaml.dump(current, f, default_flow_style=False, sort_keys=False)

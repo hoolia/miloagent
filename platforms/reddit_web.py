@@ -651,6 +651,148 @@ class RedditWebBot(BasePlatform):
             logger.debug(f"Failed to fetch thread comments: {e}")
             return []
 
+    def generate_draft(self, opportunity: Dict, project: Dict, hub_reference: str = "",
+                       research_context: str = "", failure_rules: str = "") -> str:
+        """Generate a comment draft without posting. Returns the comment text, or '' on failure."""
+        if not self._ensure_auth():
+            logger.error("Cannot generate draft: Reddit authentication failed")
+            return ""
+        try:
+            stage = opportunity.get("_community_stage", "new")
+            is_promo = self.content_gen.should_be_promotional(
+                subreddit=opportunity.get("subreddit", ""),
+                project=project.get("project", {}).get("name", "unknown"),
+                stage=stage,
+            )
+            recent_own_comments = []
+            try:
+                recent_own_comments = self.db.get_recent_comments_by_account(
+                    account=self._username,
+                    subreddit=opportunity.get("subreddit", ""),
+                    hours=72, limit=5,
+                )
+            except Exception:
+                pass
+            self.content_gen._current_account = self._username
+            self.content_gen._recent_own_comments = recent_own_comments
+            thread_comments = []
+            post_id = opportunity.get("target_id", "")
+            if post_id:
+                thread_comments = self._fetch_thread_comments(
+                    post_id, opportunity.get("subreddit", ""), limit=6
+                )
+            comment_text = self.content_gen.generate_reddit_comment(
+                post_title=opportunity["title"],
+                post_body=opportunity.get("body", ""),
+                subreddit=opportunity["subreddit"],
+                project=project,
+                is_promotional=is_promo,
+                hub_reference=hub_reference or None,
+                research_context=research_context or None,
+                failure_rules=failure_rules or None,
+                thread_comments=thread_comments,
+            )
+            comment_text = self._validate_content(comment_text, opportunity, project, is_promo)
+            return comment_text or ""
+        except Exception as e:
+            logger.error(f"Failed to generate draft: {e}")
+            return ""
+
+    def post_draft(self, opportunity: Dict, project: Dict, comment_text: str) -> bool:
+        """Post a pre-generated comment text to Reddit. Returns True on success."""
+        project_name = project.get("project", {}).get("name", "unknown")
+        if not self._ensure_auth():
+            logger.error("Cannot post draft: Reddit authentication failed")
+            self._consecutive_failures += 1
+            return False
+        try:
+            delay = self._human_reading_delay(
+                opportunity.get("title", ""),
+                opportunity.get("body", ""),
+                comment_text,
+            )
+            time.sleep(delay)
+            fullname = opportunity.get("fullname", "")
+            if not fullname:
+                fullname = f"t3_{opportunity['target_id']}"
+            if self._oauth_token:
+                post_data = {"thing_id": fullname, "text": comment_text, "api_type": "json"}
+                post_headers = {
+                    "Authorization": f"Bearer {self._oauth_token}",
+                    "User-Agent": self.session.headers.get("User-Agent", _random_ua()),
+                }
+                resp = self.session.post(
+                    "https://oauth.reddit.com/api/comment",
+                    data=post_data, headers=post_headers, timeout=30,
+                )
+            elif self._modhash:
+                post_data = {
+                    "thing_id": fullname, "text": comment_text,
+                    "uh": self._modhash, "api_type": "json",
+                }
+                post_headers = {
+                    "User-Agent": self.session.headers.get("User-Agent", _random_ua()),
+                    "Referer": opportunity.get("url", f"{REDDIT_OLD}/"),
+                    "Origin": REDDIT_OLD,
+                }
+                resp = self.session.post(
+                    f"{REDDIT_OLD}/api/comment",
+                    data=post_data, headers=post_headers, timeout=30,
+                )
+            else:
+                logger.error("No modhash or OAuth token available — cannot post draft")
+                self._consecutive_failures += 1
+                return False
+            if resp.status_code == 429:
+                logger.warning("Reddit rate limited on draft post")
+                self._consecutive_failures += 1
+                return False
+            if resp.status_code == 403:
+                sub = opportunity.get("subreddit", opportunity.get("subreddit_or_query", ""))
+                if sub:
+                    self.db.ban_account_from_sub(self._username, sub)
+                self._authenticated = False
+                self._modhash = ""
+                self._consecutive_failures += 1
+                return False
+            try:
+                result = resp.json()
+            except Exception:
+                self._consecutive_failures += 1
+                return False
+            errors = result.get("json", {}).get("errors", [])
+            if errors:
+                logger.error(f"Reddit draft post error: {errors}")
+                self._consecutive_failures += 1
+                return False
+            self._consecutive_failures = 0
+            self._circuit_breaker_opened_at = None
+            try:
+                self.db.log_comment_content(
+                    account=self._username,
+                    subreddit=opportunity.get("subreddit", ""),
+                    post_id=opportunity.get("target_id", ""),
+                    comment_text=comment_text,
+                )
+            except Exception:
+                pass
+            things = result.get("json", {}).get("data", {}).get("things", [])
+            comment_data = things[0].get("data", {}) if things else {}
+            comment_id = comment_data.get("id", "unknown")
+            self.db.log_action(
+                platform="reddit", action_type="comment",
+                account=self._username, project=project_name,
+                target_id=opportunity["target_id"], content=comment_text,
+                metadata={"comment_id": comment_id, "subreddit": opportunity.get("subreddit", ""), "method": "web_session"},
+            )
+            self.db.update_opportunity_status(opportunity["target_id"], "acted")
+            logger.info(f"Posted draft on r/{opportunity.get('subreddit','')}: {opportunity.get('title','')[:50]}")
+            return True
+        except Exception as e:
+            logger.error(f"Failed to post draft: {e}")
+            self._consecutive_failures += 1
+            return False
+
     def act(self, opportunity: Dict, project: Dict, hub_reference: str = "",
             research_context: str = "", failure_rules: str = "") -> bool:
         project_name = project.get("project", {}).get("name", "unknown")

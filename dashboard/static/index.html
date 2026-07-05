@@ -68,6 +68,7 @@
     <div class="metric-pill"><span class="mv" id="mrOpps" style="color:var(--yellow)">0</span><span class="ml">Opportunities</span></div>
     <div class="metric-pill"><span class="mv" id="mrAccounts" style="color:var(--blue)">0</span><span class="ml">Accounts</span></div>
     <div class="metric-pill"><span class="mv" id="mrHubs" style="color:var(--pink)">0</span><span class="ml">Communities</span></div>
+    <div class="metric-pill"><span class="mv" id="mrQueue" style="color:var(--accent)">0</span><span class="ml">Queue</span></div>
     <div class="metric-pill"><span class="mv" id="mrCPU" style="color:var(--text)">-</span><span class="ml">CPU</span></div>
     <div class="metric-pill"><span class="mv" id="mrRAM" style="color:var(--text)">-</span><span class="ml">RAM</span></div>
   </div>
@@ -79,6 +80,7 @@
     <div class="nav-tab" data-tab="intel" onclick="switchTab('intel')"><span class="tab-icon">&#9733;</span>Intelligence<span class="tab-badge score-badge" id="tabScoreBadge"></span></div>
     <div class="nav-tab" data-tab="communities" onclick="switchTab('communities')"><span class="tab-icon">&#9673;</span>Communities</div>
     <div class="nav-tab" data-tab="config" onclick="switchTab('config')"><span class="tab-icon">&#9881;</span>Config<span class="tab-badge cpu-badge" id="tabCpuBadge"></span></div>
+    <div class="nav-tab" data-tab="queue" onclick="switchTab('queue')"><span class="tab-icon">&#9998;</span>Queue<span class="tab-badge err-badge" id="tabQueueBadge" style="display:none"></span></div>
   </div>
 
   <!-- Global Status Bar -->
@@ -375,6 +377,27 @@
         <div id="cookiesStatus"></div>
       </div>
     </div>
+  </div>
+
+  <!-- ═══════ TAB 6: APPROVAL QUEUE ═══════ -->
+  <div id="tab-queue" class="tab-content">
+    <div class="card full" style="margin-bottom:16px">
+      <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px">
+        <h2 style="margin:0">&#9998; Approval Queue</h2>
+        <div style="display:flex;align-items:center;gap:16px">
+          <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:13px;color:var(--text2)">
+            <span>Manual Approval Mode</span>
+            <input type="checkbox" id="chkManualApproval" onchange="toggleManualApproval(this.checked)"
+              style="width:16px;height:16px;cursor:pointer;accent-color:var(--accent)">
+          </label>
+          <button class="btn btn-sm" onclick="loadQueue()">&#8635; Refresh</button>
+        </div>
+      </div>
+      <p style="color:var(--text3);font-size:12px;margin:8px 0 0">
+        When Manual Approval is on, the bot generates a draft response for each opportunity and waits here for you to review, edit, and approve before posting.
+      </p>
+    </div>
+    <div id="queueList"></div>
   </div>
 
 </div>

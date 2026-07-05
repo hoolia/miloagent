@@ -807,6 +807,104 @@ function renderOpps(d) {
 }
 
 // ══════════════════════════════════════════════════════════════
+// APPROVAL QUEUE
+// ══════════════════════════════════════════════════════════════
+async function loadQueue() {
+  const el = document.getElementById('queueList');
+  if (!el) return;
+  el.innerHTML = '<p class="no-data">Loading...</p>';
+  const items = await api('/api/queue').catch(() => []);
+  const badge = document.getElementById('tabQueueBadge');
+  const metric = document.getElementById('mrQueue');
+  const count = Array.isArray(items) ? items.length : 0;
+  if (badge) { badge.textContent = count || ''; badge.style.display = count ? '' : 'none'; }
+  if (metric) metric.textContent = count;
+  if (!count) { el.innerHTML = '<p class="no-data">No items pending approval. Enable Manual Approval Mode and trigger an Act cycle.</p>'; return; }
+  el.innerHTML = items.map(o => {
+    const sub = esc(o.subreddit_or_query || o.subreddit || '');
+    const title = esc((o.title || '').substring(0, 120));
+    const score = (o.score || 0).toFixed(1);
+    const sc = o.score >= 7 ? 'var(--green)' : o.score >= 4 ? 'var(--yellow)' : 'var(--text3)';
+    const ts = (o.timestamp || '').split('T')[0] || (o.timestamp || '').split(' ')[0] || '';
+    const draft = esc(o.draft_response || '');
+    return `
+<div class="card" style="margin-bottom:14px" id="queue-card-${o.id}">
+  <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;flex-wrap:wrap;margin-bottom:10px">
+    <div>
+      <span style="color:var(--orange);font-family:var(--font-data);font-size:11px;font-weight:700">r/${sub}</span>
+      <span style="color:var(--text3);font-size:11px;margin-left:8px">${ts}</span>
+      <div style="font-size:14px;color:var(--text);margin-top:4px;font-weight:600">${title}</div>
+    </div>
+    <span style="color:${sc};font-family:var(--font-data);font-weight:800;font-size:18px;white-space:nowrap">&#9679; ${score}</span>
+  </div>
+  <div style="margin-bottom:10px">
+    <label style="font-size:11px;color:var(--text3);text-transform:uppercase;letter-spacing:.5px">Draft Response</label>
+    <textarea id="draft-${o.id}" rows="5" style="width:100%;margin-top:6px;background:var(--bg2,#0d0d1a);color:var(--text);border:1px solid var(--border,#2a2a4a);border-radius:6px;padding:10px;font-size:13px;font-family:inherit;resize:vertical;box-sizing:border-box">${draft}</textarea>
+  </div>
+  <div style="display:flex;gap:10px">
+    <button class="btn primary" onclick="approveAction(${o.id})" style="flex:1">&#10003; Approve &amp; Post</button>
+    <button class="btn danger" onclick="rejectAction(${o.id})" style="flex:0 0 auto">&#10007; Reject</button>
+  </div>
+</div>`;
+  }).join('');
+}
+
+async function approveAction(id) {
+  const ta = document.getElementById('draft-' + id);
+  if (!ta || !ta.value.trim()) { showToast('Response text cannot be empty', 'error'); return; }
+  const btn = ta.closest('.card').querySelector('.btn.primary');
+  if (btn) { btn.disabled = true; btn.textContent = 'Posting...'; }
+  try {
+    const r = await fetch('/api/queue/' + id + '/approve', {
+      method: 'POST',
+      headers: {'Authorization': 'Bearer ' + TOKEN, 'Content-Type': 'application/json'},
+      body: JSON.stringify({response: ta.value.trim()}),
+    });
+    const d = await r.json();
+    if (d.ok) {
+      showToast('Posted successfully!', 'success');
+      document.getElementById('queue-card-' + id)?.remove();
+      loadQueue();
+    } else {
+      showToast(d.detail || 'Post failed', 'error');
+      if (btn) { btn.disabled = false; btn.textContent = '✓ Approve & Post'; }
+    }
+  } catch(e) {
+    showToast('Network error', 'error');
+    if (btn) { btn.disabled = false; btn.textContent = '✓ Approve & Post'; }
+  }
+}
+
+async function rejectAction(id) {
+  try {
+    const r = await fetch('/api/queue/' + id + '/reject', {
+      method: 'POST',
+      headers: {'Authorization': 'Bearer ' + TOKEN},
+    });
+    const d = await r.json();
+    if (d.ok) {
+      showToast('Opportunity rejected', 'success');
+      document.getElementById('queue-card-' + id)?.remove();
+      loadQueue();
+    } else {
+      showToast(d.detail || 'Reject failed', 'error');
+    }
+  } catch(e) { showToast('Network error', 'error'); }
+}
+
+async function toggleManualApproval(enabled) {
+  try {
+    const r = await fetch('/api/settings', {
+      method: 'PUT',
+      headers: {'Authorization': 'Bearer ' + TOKEN, 'Content-Type': 'application/json'},
+      body: JSON.stringify({manual_approval: enabled}),
+    });
+    const d = await r.json();
+    showToast(enabled ? 'Manual approval ON — bot will queue drafts' : 'Manual approval OFF — bot posts automatically', 'success');
+  } catch(e) { showToast('Failed to update setting', 'error'); }
+}
+
+// ══════════════════════════════════════════════════════════════
 // RENDER: DECISION LOG
 // ══════════════════════════════════════════════════════════════
 function renderDecisionLog(d) {
@@ -1921,9 +2019,9 @@ async function refresh() {
       if (requests.status==='fulfilled') renderTakeoverRequests(requests.value.requests || requests.value);
     }
     else if (currentTab === 'config') {
-      const [projects, accounts, cookies, server, schedule] = await Promise.allSettled([
+      const [projects, accounts, cookies, server, schedule, settings] = await Promise.allSettled([
         api('/api/projects'), api('/api/accounts'), api('/api/cookies'),
-        api('/api/server'), api('/api/schedule')
+        api('/api/server'), api('/api/schedule'), api('/api/settings')
       ]);
       if (projects.status==='fulfilled') renderManageProjects(projects.value);
       if (accounts.status==='fulfilled') {
@@ -1934,7 +2032,23 @@ async function refresh() {
       if (cookies.status==='fulfilled') renderCookies(cookies.value);
       if (server.status==='fulfilled') renderServer(server.value);
       if (schedule.status==='fulfilled') renderSchedule(schedule.value, 'scheduleListFull');
+      if (settings.status==='fulfilled' && settings.value) {
+        const chk = document.getElementById('chkManualApproval');
+        if (chk) chk.checked = !!settings.value.manual_approval;
+      }
     }
+    else if (currentTab === 'queue') {
+      loadQueue();
+    }
+    // Always update queue badge (lightweight — just count)
+    api('/api/queue').then(q => {
+      const count = Array.isArray(q) ? q.length : 0;
+      const badge = document.getElementById('tabQueueBadge');
+      const metric = document.getElementById('mrQueue');
+      if (badge) { badge.textContent = count || ''; badge.style.display = count ? '' : 'none'; }
+      if (metric) metric.textContent = count;
+    }).catch(() => {});
+
     // Always fetch server stats for global status bar (lightweight)
     if (currentTab !== 'config') {
       api('/api/server').then(sv => {
