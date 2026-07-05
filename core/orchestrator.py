@@ -92,6 +92,17 @@ class Orchestrator:
     def __init__(self, config_dir: str = "config/"):
         self.config_dir = config_dir
         self.settings = load_yaml(f"{config_dir}/settings.yaml")
+        # Merge runtime overrides (written by dashboard PUT /api/settings — survives restarts)
+        _overrides_path = "data/settings_overrides.yaml"
+        if os.path.exists(_overrides_path):
+            import yaml as _yaml
+            with open(_overrides_path) as _f:
+                _ov = _yaml.safe_load(_f) or {}
+            for _k, _v in _ov.items():
+                if isinstance(_v, dict) and isinstance(self.settings.get(_k), dict):
+                    self.settings[_k].update(_v)
+                else:
+                    self.settings[_k] = _v
         self._bot_settings = self.settings.get("bot", {})
         self._mode = self._bot_settings.get("mode", "background")
 
