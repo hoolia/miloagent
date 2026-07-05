@@ -1,8 +1,8 @@
 """Environment detection — auto-detect Mac vs Linux server.
 
 Detects the runtime environment once and caches the result.
-Used by resource_monitor, orchestrator, cookie_manager, and CLI
-to auto-configure optimizations for the current platform.
+Used by resource_monitor, orchestrator, and CLI to auto-configure
+optimizations for the current platform.
 """
 
 import os
@@ -70,22 +70,6 @@ def _recommend_mode(info: dict) -> str:
         return "full"
     return "background"
 
-
-def get_chrome_paths() -> list:
-    """Return Chrome/Chromium executable paths for the current platform."""
-    if detect_environment()["is_macos"]:
-        return [
-            "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
-            "/Applications/Chromium.app/Contents/MacOS/Chromium",
-            "/Applications/Brave Browser.app/Contents/MacOS/Brave Browser",
-        ]
-    return [
-        "/usr/bin/google-chrome",
-        "/usr/bin/google-chrome-stable",
-        "/usr/bin/chromium",
-        "/usr/bin/chromium-browser",
-        "/snap/bin/chromium",
-    ]
 
 
 def get_env_summary() -> str:
