@@ -1875,28 +1875,27 @@ h1{{color:#ff6b35}}p{{color:#a0a0c0}}</style></head>
                     "promotion_rate", "active_hours", "rate_limits",
                     "manual_approval",
                 }
-                settings_path = os.path.join(
-                    os.path.dirname(os.path.dirname(__file__)),
-                    "config", "settings.yaml",
-                )
-                with open(settings_path) as f:
-                    current = yaml.safe_load(f) or {}
+                overrides_path = "data/settings_overrides.yaml"
+                try:
+                    with open(overrides_path) as f:
+                        overrides = yaml.safe_load(f) or {}
+                except FileNotFoundError:
+                    overrides = {}
                 changed = []
                 for key, value in body.items():
                     if key not in allowed_keys:
                         continue
                     if key == "manual_approval":
-                        # stored under bot: section
-                        current.setdefault("bot", {})["manual_approval"] = bool(value)
+                        overrides.setdefault("bot", {})["manual_approval"] = bool(value)
                         self.orch.settings.setdefault("bot", {})["manual_approval"] = bool(value)
                     else:
-                        current[key] = value
+                        overrides[key] = value
+                        self.orch.settings[key] = value
                     changed.append(key)
                 if changed:
-                    with open(settings_path, "w") as f:
-                        yaml.dump(current, f, default_flow_style=False, sort_keys=False)
-                    # Hot-reload settings
-                    self.orch.settings = current
+                    os.makedirs("data", exist_ok=True)
+                    with open(overrides_path, "w") as f:
+                        yaml.dump(overrides, f, default_flow_style=False, sort_keys=False)
                     return {"ok": True, "changed": changed}
                 return {"ok": False, "error": "No valid keys provided"}
             except Exception as e:
