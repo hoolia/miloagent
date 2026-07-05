@@ -1304,121 +1304,33 @@ def stop():
 @click.option("--account", "-a", default=None, help="Username to login (skip interactive menu)")
 @click.option("--all-accounts", is_flag=True, help="Login all enabled accounts one by one")
 def login(platform, account, all_accounts):
-    """Login to a platform via browser (Reddit/Twitter) or SMS code (Telegram).
+    """Login to a platform. Telegram uses SMS auth; Reddit/Twitter use paste-cookies.
 
     \b
-    Reddit/Twitter: Opens Chrome, log in manually, cookies captured.
+    Reddit/Twitter: Browser-based login is no longer supported.
+      Use 'paste-cookies' to import session cookies manually.
     Telegram: Sends SMS code to your phone, enter it in terminal.
 
     \b
     Examples:
-      python miloagent.py login reddit                  # Interactive account picker
-      python miloagent.py login reddit -a MyAccount      # Login specific account
+      python miloagent.py paste-cookies reddit          # Paste cookies from browser
       python miloagent.py login telegram                # Telegram SMS auth
     """
-    # ── Telegram: Telethon phone-based auth ──
     if platform == "telegram":
         _login_telegram()
         return
 
-    from core.cookie_manager import CookieManager
-
-    # Check if Playwright is installed
-    if not CookieManager.is_available():
-        click.echo(click.style("Playwright is not installed.", fg="yellow"))
-        click.echo("\nInstalling now...")
-        try:
-            CookieManager.install()
-            click.echo(click.style("Playwright installed!", fg="green"))
-        except Exception as e:
-            click.echo(click.style(f"Installation failed: {e}", fg="red"))
-            click.echo("\nManual install:")
-            click.echo("  pip install playwright && playwright install chromium")
-            click.echo("\nAlternative: use 'paste-cookies' for manual cookie import.")
-            return
-
-    # Get account config
-    if platform == "reddit":
-        cfg = load_yaml("config/reddit_accounts.yaml")
-    else:
-        cfg = load_yaml("config/twitter_accounts.yaml")
-
-    accounts_list = cfg.get("accounts", [])
-    enabled = [a for a in accounts_list if a.get("enabled", True)]
-    if not enabled:
-        click.echo(click.style(f"No enabled {platform} accounts configured.", fg="red"))
-        return
-
-    # Determine which accounts to login
-    if all_accounts:
-        targets = enabled
-    elif account:
-        matched = next(
-            (a for a in enabled if a["username"].lower() == account.lower()),
-            None,
-        )
-        if not matched:
-            click.echo(click.style(f"Account '{account}' not found or disabled.", fg="red"))
-            click.echo(f"Available: {', '.join(a['username'] for a in enabled)}")
-            return
-        targets = [matched]
-    else:
-        # Interactive selection
-        click.echo(f"\n=== {platform.title()} Accounts ===\n")
-        for i, acc in enumerate(enabled, 1):
-            username = acc["username"]
-            cookies_file = acc.get("cookies_file", "")
-            has_cookies = os.path.exists(cookies_file) if cookies_file else False
-            status = click.style("has cookies", fg="green") if has_cookies else click.style("no cookies", fg="red")
-            click.echo(f"  {i}. {username} [{status}]")
-
-        click.echo(f"  0. Login ALL accounts one by one")
-        click.echo("")
-
-        choice = click.prompt("Which account?", type=int, default=1)
-        if choice == 0:
-            targets = enabled
-        elif 1 <= choice <= len(enabled):
-            targets = [enabled[choice - 1]]
-        else:
-            click.echo(click.style("Invalid choice.", fg="red"))
-            return
-
-    # Login each target account
-    mgr = CookieManager()
-    success_count = 0
-
-    for i, target_acc in enumerate(targets):
-        username = target_acc["username"]
-        cookies_file = target_acc.get("cookies_file", f"data/cookies/{platform}_account{i+1}.json")
-
-        click.echo(f"\n{'='*50}")
-        click.echo(click.style(f"Login as: {username}", fg="cyan", bold=True))
-        click.echo(f"Cookies: {cookies_file}")
-        click.echo(f"{'='*50}")
-        click.echo("A fresh Chrome window will open (clean profile).")
-        click.echo(click.style(f"Log in as @{username}, then come back here and press ENTER.", fg="yellow", bold=True))
-        click.echo("")
-
-        if len(targets) > 1 and i > 0:
-            if not click.confirm("Ready for next account?", default=True):
-                click.echo("Skipping remaining accounts.")
-                break
-
-        cookies = mgr.login(platform, cookies_file, timeout=120)
-
-        if cookies:
-            click.echo(click.style(f"Login successful for {username}! {len(cookies)} cookies saved.", fg="green"))
-            success_count += 1
-        else:
-            click.echo(click.style(f"Login failed for {username}.", fg="red"))
-
-    # Summary
-    if len(targets) > 1:
-        click.echo(f"\n--- {success_count}/{len(targets)} accounts logged in ---")
-
-    if success_count > 0:
-        click.echo(f"\nRun 'python miloagent.py test {platform}' to verify.")
+    click.echo(click.style(
+        "Browser-based login is no longer supported for Reddit/Twitter.", fg="yellow"
+    ))
+    click.echo("")
+    click.echo("For Reddit, use one of these methods:")
+    click.echo("  1. paste-cookies — paste from browser DevTools:")
+    click.echo("       python miloagent.py paste-cookies reddit")
+    click.echo("")
+    click.echo("  2. token_v2 in config — add to application-miloagent.yaml:")
+    click.echo("       secrets.reddit_accounts → accounts[0] → token_v2: \"<value>\"")
+    click.echo("       Get token_v2: reddit.com → F12 → Application → Cookies → reddit.com")
 
 
 def _login_telegram():

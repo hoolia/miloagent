@@ -1,9 +1,15 @@
 # =============================================================================
 # Reddit Account Configuration
 # =============================================================================
-# Auth modes:
-#   "web"  = Cookie-based (recommended — no API app needed)
-#   "api"  = PRAW/OAuth (needs client_id/client_secret)
+# Authentication: cookie-based (token_v2 JWT from browser session).
+#
+# Two ways to provide the session token:
+#   1. token_v2 field (preferred for server/pod deployments):
+#        - Open reddit.com in Chrome (logged in)
+#        - F12 → Application → Cookies → reddit.com → copy token_v2 value
+#        - Paste it below; the bot loads it on startup without needing a cookies file
+#   2. cookies_file: path to a JSON file with {name: value} cookies
+#        - Run: python miloagent.py paste-cookies reddit
 # =============================================================================
 
 auth_mode: "web"
@@ -11,6 +17,7 @@ auth_mode: "web"
 accounts:
   - username: "your_reddit_username"
     password: "your_reddit_password"
+    token_v2: ""          # Paste fresh token_v2 here (takes priority over cookies_file)
     client_id: ""
     client_secret: ""
     user_agent: "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36"
@@ -23,6 +30,7 @@ accounts:
 
   # - username: "second_account"
   #   password: "password"
+  #   token_v2: ""
   #   client_id: ""
   #   client_secret: ""
   #   user_agent: "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36"
