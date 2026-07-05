@@ -1186,6 +1186,24 @@ class Orchestrator:
                 else:
                     continue
 
+                # Human-approval mode: generate draft and queue for review instead of posting
+                if platform == "reddit" and self.settings.get("bot", {}).get("manual_approval", False):
+                    draft = bot.generate_draft(
+                        opp, project,
+                        hub_reference=_hub_ref,
+                        research_context=_research_ctx,
+                        failure_rules=_failure_rules,
+                    )
+                    if draft:
+                        self.db.set_draft_response(opp["id"], draft)
+                        logger.info(
+                            f"Draft queued for approval: {opp.get('title', '')[:60]} "
+                            f"(r/{opp.get('subreddit_or_query', '')})"
+                        )
+                    else:
+                        logger.warning("Draft generation failed, opportunity left pending")
+                    return True
+
                 if platform == "reddit":
                     success = bot.act(
                         opp, project,

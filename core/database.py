@@ -464,6 +464,14 @@ class Database:
                     "ALTER TABLE opportunities ADD COLUMN rejection_reason TEXT"
                 )
 
+            # Phase 9: Human-approval queue (draft_response)
+            try:
+                self.conn.execute("SELECT draft_response FROM opportunities LIMIT 1")
+            except sqlite3.OperationalError:
+                self.conn.execute(
+                    "ALTER TABLE opportunities ADD COLUMN draft_response TEXT"
+                )
+
             self.conn.executescript("""
                 CREATE TABLE IF NOT EXISTS decision_log (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -870,6 +878,25 @@ class Database:
                 "UPDATE opportunities SET status = ? WHERE target_id = ?",
                 (status, target_id),
             )
+
+    def set_draft_response(self, opp_id: int, draft_text: str):
+        """Store a generated draft and mark opportunity as awaiting human approval."""
+        self._execute_write(
+            "UPDATE opportunities SET draft_response = ?, status = 'awaiting_approval' WHERE id = ?",
+            (draft_text, opp_id),
+        )
+
+    def get_awaiting_approval(self, limit: int = 50) -> List[Dict]:
+        """Return opportunities queued for human review, newest first."""
+        rows = self.conn.execute(
+            """SELECT id, platform, project, title, subreddit_or_query,
+                      score, draft_response, timestamp, target_id, metadata
+               FROM opportunities
+               WHERE status = 'awaiting_approval'
+               ORDER BY score DESC, timestamp DESC LIMIT ?""",
+            (limit,),
+        ).fetchall()
+        return [dict(row) for row in rows]
 
     def get_rejected_opportunities(
         self, hours: int = 24, limit: int = 50,
