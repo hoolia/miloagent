@@ -813,7 +813,12 @@ async function loadQueue() {
   const el = document.getElementById('queueList');
   if (!el) return;
   el.innerHTML = '<p class="no-data">Loading...</p>';
-  const items = await api('/api/queue').catch(() => []);
+  const [items, settings] = await Promise.all([
+    api('/api/queue').catch(() => []),
+    api('/api/settings').catch(() => null),
+  ]);
+  const chk = document.getElementById('chkManualApproval');
+  if (chk && settings) chk.checked = !!settings.manual_approval;
   const badge = document.getElementById('tabQueueBadge');
   const metric = document.getElementById('mrQueue');
   const count = Array.isArray(items) ? items.length : 0;
