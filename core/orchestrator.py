@@ -727,6 +727,12 @@ class Orchestrator:
         if not self.rate_limiter.is_active_hours():
             logger.debug("Outside active hours, skipping scan")
             return
+        if self.llm.all_providers_down():
+            logger.warning(
+                "All LLM providers are down — skipping scan to avoid "
+                "unnecessary Reddit requests that cannot lead to any action"
+            )
+            return
         if self.rate_limiter.should_take_random_break():
             logger.info("Taking a random break (human simulation)")
             return
@@ -885,6 +891,15 @@ class Orchestrator:
         if self.telegram and hasattr(self.telegram, 'paused') and self.telegram.paused:
             self._paused = True
             logger.info("Paused via Telegram dashboard")
+            return
+
+        # Skip entire act cycle if all LLM providers are down — avoids hammering
+        # Reddit with scan/context requests that will fail at the generation step.
+        if self.llm.all_providers_down():
+            logger.warning(
+                "All LLM providers are down (circuit-breakers open) — "
+                "skipping act cycle to avoid unnecessary Reddit requests"
+            )
             return
 
         acted = 0
