@@ -530,6 +530,18 @@ class LLMProvider:
         """List names of configured (non-placeholder) providers."""
         return list(self.clients.keys())
 
+    def all_providers_down(self) -> bool:
+        """True when every configured provider is circuit-broken or rate-limited."""
+        if not self.clients:
+            return True
+        now = time.time()
+        for pname in self.clients:
+            with self._cb_lock:
+                until = self._disabled_until.get(pname, 0)
+            if not until or now >= until:
+                return False
+        return True
+
     def shutdown(self):
         """Shutdown the thread pool."""
         self._pool.shutdown(wait=False)
