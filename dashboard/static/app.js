@@ -892,14 +892,32 @@ async function rejectAction(id) {
   } catch(e) { showToast('Network error', 'error'); }
 }
 
-async function toggleManualApproval(enabled) {
+function _applyManualApprovalBtn(enabled) {
+  const btn = document.getElementById('btnManualApproval');
+  if (!btn) return;
+  if (enabled) {
+    btn.textContent = '✓ Manual Approval';
+    btn.classList.remove('primary');
+    btn.classList.add('success');
+  } else {
+    btn.textContent = 'Manual Approval';
+    btn.classList.remove('success');
+    btn.classList.add('primary');
+  }
+  btn.dataset.enabled = enabled ? '1' : '0';
+}
+
+async function toggleManualApproval() {
+  const btn = document.getElementById('btnManualApproval');
+  const enabled = !(btn && btn.dataset.enabled === '1');
   try {
     const r = await fetch('/api/settings', {
       method: 'PUT',
       headers: {'Authorization': 'Bearer ' + TOKEN, 'Content-Type': 'application/json'},
       body: JSON.stringify({manual_approval: enabled}),
     });
-    const d = await r.json();
+    await r.json();
+    _applyManualApprovalBtn(enabled);
     showToast(enabled ? 'Manual approval ON — bot will queue drafts' : 'Manual approval OFF — bot posts automatically', 'success');
   } catch(e) { showToast('Failed to update setting', 'error'); }
 }
@@ -1960,11 +1978,12 @@ async function refresh() {
     if (status) renderStatus(status);
 
     if (currentTab === 'command') {
-      const [stats, minimaps, schedule, history, acctPerf, heatmap, funnel] = await Promise.allSettled([
+      const [stats, minimaps, schedule, history, acctPerf, heatmap, funnel, settings] = await Promise.allSettled([
         api('/api/stats'), api('/api/minimaps'), api('/api/schedule'), api('/api/history?hours=168'),
         api('/api/accounts/reddit/performance'),
         api('/api/heatmap').catch(()=>null),
-        api('/api/funnel').catch(()=>null)
+        api('/api/funnel').catch(()=>null),
+        api('/api/settings'),
       ]);
       if (stats.status==='fulfilled') renderStats(stats.value);
       if (minimaps.status==='fulfilled') renderMinimaps(minimaps.value);
@@ -1978,6 +1997,7 @@ async function refresh() {
       if (acctPerf.status==='fulfilled') renderRedditAcctPerf(acctPerf.value);
       if (heatmap.status==='fulfilled' && heatmap.value) renderHeatmap(heatmap.value);
       if (funnel.status==='fulfilled' && funnel.value) renderFunnel(funnel.value);
+      if (settings.status==='fulfilled' && settings.value) _applyManualApprovalBtn(!!settings.value.manual_approval);
     }
     else if (currentTab === 'liveops') {
       const [actions, convos] = await Promise.allSettled([api('/api/actions?limit=50'), api('/api/conversations')]);
@@ -2033,8 +2053,7 @@ async function refresh() {
       if (server.status==='fulfilled') renderServer(server.value);
       if (schedule.status==='fulfilled') renderSchedule(schedule.value, 'scheduleListFull');
       if (settings.status==='fulfilled' && settings.value) {
-        const chk = document.getElementById('chkManualApproval');
-        if (chk) chk.checked = !!settings.value.manual_approval;
+        _applyManualApprovalBtn(!!settings.value.manual_approval);
       }
     }
     else if (currentTab === 'queue') {

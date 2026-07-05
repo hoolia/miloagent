@@ -136,7 +136,7 @@
         <div class="controls-grid">
           <button class="btn primary" onclick="doControl('scan')">Scan Now</button>
           <button class="btn primary" onclick="doControl('act')">Act Now</button>
-          <button class="btn primary" onclick="doControl('learn')">Learn</button>
+          <button class="btn primary" id="btnManualApproval" onclick="toggleManualApproval()">Manual Approval</button>
           <button class="btn primary" onclick="doControl('engage')">Engage</button>
         </div>
         <div class="controls-grid" style="margin-top:8px">
@@ -384,17 +384,10 @@
     <div class="card full" style="margin-bottom:16px">
       <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px">
         <h2 style="margin:0">&#9998; Approval Queue</h2>
-        <div style="display:flex;align-items:center;gap:16px">
-          <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:13px;color:var(--text2)">
-            <span>Manual Approval Mode</span>
-            <input type="checkbox" id="chkManualApproval" onchange="toggleManualApproval(this.checked)"
-              style="width:16px;height:16px;cursor:pointer;accent-color:var(--accent)">
-          </label>
-          <button class="btn btn-sm" onclick="loadQueue()">&#8635; Refresh</button>
-        </div>
+        <button class="btn btn-sm" onclick="loadQueue()">&#8635; Refresh</button>
       </div>
       <p style="color:var(--text3);font-size:12px;margin:8px 0 0">
-        When Manual Approval is on, the bot generates a draft response for each opportunity and waits here for you to review, edit, and approve before posting.
+        Enable Manual Approval in Mission Control. The bot will queue draft responses here for review before posting.
       </p>
     </div>
     <div id="queueList"></div>
