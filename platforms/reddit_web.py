@@ -111,7 +111,8 @@ class RedditWebBot(BasePlatform):
         self.session.mount("http://", _adapter)
         self._authenticated = False
         self._modhash = ""
-        self._oauth_token = ""   # token_v2 as Bearer for oauth.reddit.com API
+        self._oauth_token = ""   # token_v2 OR OAuth2 access token for oauth.reddit.com API
+        self._oauth_token_expires_at: float = 0.0  # epoch when _oauth_token expires
 
         # CAPTCHA auto-solver (ddddocr -> tesseract -> give up)
         self._captcha_solver = RedditCaptchaSolver(self.session)
@@ -225,10 +226,18 @@ class RedditWebBot(BasePlatform):
     def _ensure_auth(self) -> bool:
         """Ensure we're authenticated for write operations.
 
-        Tries cookie-based auth on old.reddit.com first (gets modhash).
-        Falls back to token_v2 Bearer auth on oauth.reddit.com when cookie
-        auth is unavailable (new-Reddit sessions without reddit_session cookie).
+        Priority order:
+          1. Already authenticated + token not expired → quick /api/me.json check
+          2. OAuth2 access token in-memory, not expired → use it directly
+          3. Cookie-based auth (token_v2 from saved cookies file)
+          4. OAuth2 password grant (client_id/secret in config) — no CAPTCHA
+          5. Playwright headless relogin (fallback, may hit CAPTCHA)
         """
+        # Fast path: in-memory OAuth2 token still valid
+        if self._oauth_token and time.time() < self._oauth_token_expires_at:
+            logger.debug(f"OAuth2 token still valid for u/{self._username}")
+            return True
+
         if self._authenticated:
             try:
                 resp = self.session.get(
@@ -254,8 +263,11 @@ class RedditWebBot(BasePlatform):
             logger.info("Reddit session expired, re-authenticating...")
 
         if not self._login():
-            # Cookies missing or expired — try Playwright auto-relogin if password known
+            # Cookies missing or expired — try OAuth2 password grant first (no CAPTCHA),
+            # then fall back to Playwright if no script app credentials are configured.
             if self._password:
+                if self._oauth2_password_grant():
+                    return True
                 logger.info(f"Attempting Playwright auto-relogin for u/{self._username}...")
                 if self._playwright_relogin():
                     self._load_cookies()
@@ -284,9 +296,11 @@ class RedditWebBot(BasePlatform):
                         self._oauth_token = token_v2
                         logger.info(f"OAuth Bearer auth ready for u/{self._username}")
                         return True
-                    # OAuth check failed — token invalid, try relogin if possible
+                    # OAuth check failed — try OAuth2 password grant, then Playwright
                     logger.warning("OAuth Bearer check failed — token may be expired")
                     if self._password:
+                        if self._oauth2_password_grant():
+                            return True
                         logger.info(f"Token expired, Playwright relogin for u/{self._username}...")
                         if self._playwright_relogin():
                             self._load_cookies()
@@ -300,6 +314,58 @@ class RedditWebBot(BasePlatform):
             return False
 
         return True
+
+    def _oauth2_password_grant(self) -> bool:
+        """Get OAuth2 access token via password grant (script app credentials).
+
+        Requires client_id + client_secret in account config (Reddit "script" app).
+        No browser or CAPTCHA required — pure API call.
+        Token lasts ~24h for script apps; self._oauth_token_expires_at tracks expiry.
+        """
+        client_id = self.account_config.get("client_id", "")
+        client_secret = self.account_config.get("client_secret", "")
+        if not client_id or not client_secret:
+            return False
+        if not self._password:
+            logger.warning("OAuth2 password grant: no password configured")
+            return False
+        try:
+            import base64 as _b64
+            auth = _b64.b64encode(f"{client_id}:{client_secret}".encode()).decode()
+            r = requests.post(
+                "https://www.reddit.com/api/v1/access_token",
+                headers={
+                    "Authorization": f"Basic {auth}",
+                    "User-Agent": self.session.headers.get("User-Agent", _random_ua()),
+                },
+                data={
+                    "grant_type": "password",
+                    "username": self._username,
+                    "password": self._password,
+                },
+                timeout=15,
+            )
+            if r.status_code == 200:
+                data = r.json()
+                token = data.get("access_token", "")
+                if token:
+                    self._oauth_token = token
+                    self._authenticated = True
+                    expires_in = data.get("expires_in", 3600)
+                    self._oauth_token_expires_at = time.time() + expires_in - 60
+                    logger.info(
+                        f"OAuth2 password grant success for u/{self._username} "
+                        f"(expires in {expires_in}s)"
+                    )
+                    return True
+                logger.warning(f"OAuth2 grant response missing access_token: {data}")
+            else:
+                logger.warning(
+                    f"OAuth2 password grant failed: HTTP {r.status_code} {r.text[:200]}"
+                )
+        except Exception as e:
+            logger.warning(f"OAuth2 password grant error: {e}")
+        return False
 
     def _playwright_relogin(self) -> bool:
         """Headless Playwright login — fills credentials, extracts fresh cookies.
