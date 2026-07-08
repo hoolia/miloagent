@@ -195,21 +195,23 @@ class AccountManager:
             if os.path.exists(local_path):
                 path = local_path
 
+        # Runtime disabled-accounts overlay written by remove_account (data/ is writable)
+        _disabled = self._load_disabled_overrides()
+
         try:
             with open(path) as f:
                 data = yaml.safe_load(f) or {}
             accounts = data.get("accounts", [])
             result = []
             for a in accounts:
-                if not a.get("enabled", True):
+                username = a.get("username") or a.get("phone", "")
+                key = f"{platform}:{username.lower()}"
+                if not a.get("enabled", True) or key in _disabled:
                     continue
-                identifier = a.get("username") or a.get("phone", "")
-                if identifier.startswith("YOUR_") or identifier.startswith("your_"):
+                if username.startswith("YOUR_") or username.startswith("your_"):
                     continue
-                # Skip obvious placeholder accounts
-                if identifier in ("your_reddit_username", "your_twitter_username"):
+                if username in ("your_reddit_username", "your_twitter_username"):
                     continue
-                # Normalize: ensure 'username' key is set for telegram accounts
                 if platform == "telegram" and not a.get("username"):
                     a["username"] = a.get("phone", "unknown")
                 result.append(a)
@@ -615,40 +617,47 @@ class AccountManager:
         logger.info(f"Added {platform} account: @{username}")
         return f"Added @{username} to {platform}. Cookie file: {cookie_file}"
 
+    _DISABLED_PATH = "data/accounts_disabled.yaml"
+
+    def _load_disabled_overrides(self) -> set:
+        """Return set of 'platform:username' keys that have been disabled at runtime."""
+        try:
+            with open(self._DISABLED_PATH) as f:
+                data = yaml.safe_load(f) or {}
+            return set(data.get("disabled", []))
+        except FileNotFoundError:
+            return set()
+
+    def _save_disabled_overrides(self, disabled: set) -> None:
+        os.makedirs(os.path.dirname(self._DISABLED_PATH), exist_ok=True)
+        with open(self._DISABLED_PATH, "w") as f:
+            yaml.dump({"disabled": sorted(disabled)}, f, default_flow_style=False)
+
     def remove_account(self, platform: str, username: str) -> str:
-        """Disable an account in the config (sets enabled: false)."""
-        if platform == "reddit":
-            base = f"{self.config_dir}/reddit_accounts"
-        elif platform == "twitter":
-            base = f"{self.config_dir}/twitter_accounts"
-        else:
+        """Disable an account via a writable runtime overlay in data/."""
+        if platform not in ("reddit", "twitter"):
             return f"Unknown platform: {platform}"
 
-        local_path = f"{base}.local.yaml"
-        default_path = f"{base}.yaml"
-        path = local_path if os.path.exists(local_path) else default_path
-
+        # Verify the account exists in the (read-only) base config
+        all_accounts = self.load_accounts(platform)
+        # Also include already-disabled ones for the existence check
+        disabled = self._load_disabled_overrides()
+        key = f"{platform}:{username.lower()}"
+        base_path = f"{self.config_dir}/{platform}_accounts.yaml"
+        local_path = base_path[:-5] + ".local.yaml"
+        read_path = local_path if os.path.exists(local_path) else base_path
         try:
-            with open(path) as f:
+            with open(read_path) as f:
                 data = yaml.safe_load(f) or {}
         except FileNotFoundError:
             return "Config file not found"
-
-        accounts = data.get("accounts", [])
-        found = False
-        for acc in accounts:
-            if acc.get("username", "").lower() == username.lower():
-                acc["enabled"] = False
-                found = True
-                break
-
+        found = any(a.get("username", "").lower() == username.lower()
+                    for a in data.get("accounts", []))
         if not found:
             return f"Account @{username} not found on {platform}"
 
-        data["accounts"] = accounts
-        with open(path, "w") as f:
-            yaml.dump(data, f, default_flow_style=False, sort_keys=False)
-
+        disabled.add(key)
+        self._save_disabled_overrides(disabled)
         logger.info(f"Disabled {platform} account: @{username}")
         return f"Disabled @{username} on {platform}"
 
