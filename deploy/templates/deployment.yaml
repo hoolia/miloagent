@@ -79,7 +79,6 @@ spec:
             - name: secret-files
               mountPath: /app/config/{{ $k }}.yaml
               subPath: {{ $k }}.yaml
-              readOnly: true
             {{- end }}
             {{- end }}
       volumes:
