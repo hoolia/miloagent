@@ -528,7 +528,7 @@ class WebDashboard:
         @app.get("/api/actions")
         async def get_actions(limit: int = Query(30, le=200), _=Depends(self._verify_token)):
             try:
-                rows = self.orch.db.get_recent_actions(hours=24, limit=limit)
+                rows = self.orch.db.get_recent_actions(hours=24 * 365, limit=limit)
                 return [dict(r) for r in (rows or [])]
             except Exception as e:
                 return {"error": str(e)}
