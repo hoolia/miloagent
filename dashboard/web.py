@@ -2031,12 +2031,18 @@ h1{{color:#ff6b35}}p{{color:#a0a0c0}}</style></head>
                         try:
                             with open(cookie_file) as f:
                                 cdata = json.load(f)
-                            has_session = "reddit_session" in (
-                                cdata if isinstance(cdata, dict) else
-                                {c.get("name", "") for c in cdata} if isinstance(cdata, list) else set()
-                            )
+                            if isinstance(cdata, dict):
+                                cookie_names = set(cdata.keys())
+                            elif isinstance(cdata, list):
+                                cookie_names = {c.get("name", "") for c in cdata}
+                            else:
+                                cookie_names = set()
+                            has_session = "reddit_session" in cookie_names or "token_v2" in cookie_names
                         except Exception:
                             pass
+                    # Also consider token_v2 in account config as a valid session
+                    if not has_session and acc.get("token_v2"):
+                        has_session = True
 
                     # Cooldown info
                     cd = self.orch.account_mgr._cooldowns.get(key)
