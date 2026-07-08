@@ -195,13 +195,19 @@ class AccountManager:
             if os.path.exists(local_path):
                 path = local_path
 
-        # Runtime disabled-accounts overlay written by remove_account (data/ is writable)
+        # Runtime overlays written to data/ (writable PVC) by the dashboard
         _disabled = self._load_disabled_overrides()
+        _added = self._load_added_overrides(platform)
 
         try:
             with open(path) as f:
                 data = yaml.safe_load(f) or {}
             accounts = data.get("accounts", [])
+            # Merge in dashboard-added accounts (skip duplicates already in base)
+            base_usernames = {a.get("username", "").lower() for a in accounts}
+            for a in _added:
+                if a.get("username", "").lower() not in base_usernames:
+                    accounts.append(a)
             result = []
             for a in accounts:
                 username = a.get("username") or a.get("phone", "")
@@ -537,31 +543,15 @@ class AccountManager:
 
         Returns status message.
         """
-        if platform == "reddit":
-            base = f"{self.config_dir}/reddit_accounts"
-        elif platform == "twitter":
-            base = f"{self.config_dir}/twitter_accounts"
-        else:
+        if platform not in ("reddit", "twitter"):
             return f"Unknown platform: {platform}"
 
-        # Always write to .local.yaml when it exists (server config), else .yaml
-        local_path = f"{base}.local.yaml"
-        default_path = f"{base}.yaml"
-        path = local_path if os.path.exists(local_path) else default_path
+        # Check across base config + already-added overlay
+        existing = self.load_accounts(platform)
+        if any(a.get("username", "").lower() == username.lower() for a in existing):
+            return f"Account @{username} already exists on {platform}"
 
-        # Load existing config
-        try:
-            with open(path) as f:
-                data = yaml.safe_load(f) or {}
-        except FileNotFoundError:
-            data = {}
-
-        accounts = data.get("accounts", [])
-
-        # Check if username already exists
-        for acc in accounts:
-            if acc.get("username", "").lower() == username.lower():
-                return f"Account @{username} already exists on {platform}"
+        added = self._load_added_overrides(platform)
 
         # Build account entry — cookie file uses username (matches paste endpoint)
         cookie_file = f"data/cookies/{platform}_{username}.json"
@@ -598,29 +588,17 @@ class AccountManager:
                 "max_actions_per_hour": 3,
             }
 
-        accounts.append(new_account)
-        data["accounts"] = accounts
-
-        # Preserve other top-level keys
-        if platform == "reddit" and "auth_mode" not in data:
-            data["auth_mode"] = "web"
-        if platform == "reddit" and "default_cooldown_per_subreddit_minutes" not in data:
-            data["default_cooldown_per_subreddit_minutes"] = 60
-
-        # Ensure cookies directory exists
+        added.append(new_account)
         os.makedirs("data/cookies", exist_ok=True)
-
-        # Write back
-        with open(path, "w") as f:
-            yaml.dump(data, f, default_flow_style=False, sort_keys=False)
+        self._save_added_overrides(platform, added)
 
         logger.info(f"Added {platform} account: @{username}")
         return f"Added @{username} to {platform}. Cookie file: {cookie_file}"
 
     _DISABLED_PATH = "data/accounts_disabled.yaml"
+    _ADDED_PATH = "data/accounts_added.yaml"
 
     def _load_disabled_overrides(self) -> set:
-        """Return set of 'platform:username' keys that have been disabled at runtime."""
         try:
             with open(self._DISABLED_PATH) as f:
                 data = yaml.safe_load(f) or {}
@@ -633,16 +611,41 @@ class AccountManager:
         with open(self._DISABLED_PATH, "w") as f:
             yaml.dump({"disabled": sorted(disabled)}, f, default_flow_style=False)
 
+    def _load_added_overrides(self, platform: str) -> list:
+        try:
+            with open(self._ADDED_PATH) as f:
+                data = yaml.safe_load(f) or {}
+            return data.get(platform, [])
+        except FileNotFoundError:
+            return []
+
+    def _save_added_overrides(self, platform: str, accounts: list) -> None:
+        os.makedirs(os.path.dirname(self._ADDED_PATH), exist_ok=True)
+        try:
+            with open(self._ADDED_PATH) as f:
+                data = yaml.safe_load(f) or {}
+        except FileNotFoundError:
+            data = {}
+        data[platform] = accounts
+        with open(self._ADDED_PATH, "w") as f:
+            yaml.dump(data, f, default_flow_style=False, sort_keys=False)
+
     def remove_account(self, platform: str, username: str) -> str:
-        """Disable an account via a writable runtime overlay in data/."""
+        """Remove an account via writable runtime overlays in data/."""
         if platform not in ("reddit", "twitter"):
             return f"Unknown platform: {platform}"
 
-        # Verify the account exists in the (read-only) base config
-        all_accounts = self.load_accounts(platform)
-        # Also include already-disabled ones for the existence check
-        disabled = self._load_disabled_overrides()
         key = f"{platform}:{username.lower()}"
+
+        # If account was dashboard-added, remove from added overlay
+        added = self._load_added_overrides(platform)
+        new_added = [a for a in added if a.get("username", "").lower() != username.lower()]
+        if len(new_added) < len(added):
+            self._save_added_overrides(platform, new_added)
+            logger.info(f"Removed dashboard-added {platform} account: @{username}")
+            return f"Removed @{username} from {platform}"
+
+        # Account is in the base (read-only) config — add to disabled overlay
         base_path = f"{self.config_dir}/{platform}_accounts.yaml"
         local_path = base_path[:-5] + ".local.yaml"
         read_path = local_path if os.path.exists(local_path) else base_path
@@ -651,11 +654,11 @@ class AccountManager:
                 data = yaml.safe_load(f) or {}
         except FileNotFoundError:
             return "Config file not found"
-        found = any(a.get("username", "").lower() == username.lower()
-                    for a in data.get("accounts", []))
-        if not found:
+        if not any(a.get("username", "").lower() == username.lower()
+                   for a in data.get("accounts", [])):
             return f"Account @{username} not found on {platform}"
 
+        disabled = self._load_disabled_overrides()
         disabled.add(key)
         self._save_disabled_overrides(disabled)
         logger.info(f"Disabled {platform} account: @{username}")
