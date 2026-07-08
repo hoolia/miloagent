@@ -1028,7 +1028,7 @@ h1{{color:#ff6b35}}p{{color:#a0a0c0}}</style></head>
                 if "body" not in opp:
                     opp["body"] = ""
                 # Find the account and bot for this opportunity's project
-                project_objs = self.orch.project_mgr.get_projects()
+                project_objs = self.orch.projects
                 proj_obj = next(
                     (p for p in project_objs if p.get("project", {}).get("name") == opp.get("project")),
                     project_objs[0] if project_objs else {},
