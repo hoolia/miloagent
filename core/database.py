@@ -838,12 +838,24 @@ class Database:
         metadata: Optional[Dict] = None,
         url: Optional[str] = None,
     ) -> int:
-        """Log a discovered opportunity."""
+        """Log a discovered opportunity.
+
+        On re-scan of a known target_id, only refresh score/metadata while the
+        row is still pending. Never clobber a queued (awaiting_approval), acted,
+        or skipped row - INSERT OR REPLACE would delete it, wiping its draft and
+        resetting status, draining the approval queue every scan cycle.
+        """
         cursor = self._execute_write(
-            """INSERT OR REPLACE INTO opportunities
+            """INSERT INTO opportunities
                (platform, target_id, title, subreddit_or_query,
                 score, project, status, metadata, url)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+               ON CONFLICT(target_id) DO UPDATE SET
+                   score = excluded.score,
+                   metadata = excluded.metadata,
+                   title = excluded.title,
+                   url = COALESCE(excluded.url, opportunities.url)
+               WHERE opportunities.status = 'pending'""",
             (
                 platform, target_id, title, subreddit_or_query,
                 score, project, status,
