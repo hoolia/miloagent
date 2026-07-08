@@ -472,6 +472,14 @@ class Database:
                     "ALTER TABLE opportunities ADD COLUMN draft_response TEXT"
                 )
 
+            # Phase 9b: Reddit post URL for queue display
+            try:
+                self.conn.execute("SELECT url FROM opportunities LIMIT 1")
+            except sqlite3.OperationalError:
+                self.conn.execute(
+                    "ALTER TABLE opportunities ADD COLUMN url TEXT"
+                )
+
             self.conn.executescript("""
                 CREATE TABLE IF NOT EXISTS decision_log (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
