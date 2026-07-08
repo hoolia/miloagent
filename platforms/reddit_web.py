@@ -479,6 +479,7 @@ class RedditWebBot(BasePlatform):
             subreddit_or_query=sub_name,
             score=opp["relevance_score"],
             project=project_name,
+            url=opp["url"],
             metadata={
                 "keyword": keyword,
                 "post_score": post_score,
