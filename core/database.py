@@ -890,7 +890,7 @@ class Database:
         """Return opportunities queued for human review, newest first."""
         rows = self.conn.execute(
             """SELECT id, platform, project, title, subreddit_or_query,
-                      score, draft_response, timestamp, target_id, metadata
+                      score, draft_response, timestamp, target_id, metadata, url
                FROM opportunities
                WHERE status = 'awaiting_approval'
                ORDER BY score DESC, timestamp DESC LIMIT ?""",

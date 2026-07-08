@@ -1037,11 +1037,14 @@ h1{{color:#ff6b35}}p{{color:#a0a0c0}}</style></head>
                 if not account:
                     raise HTTPException(status_code=503, detail="No Reddit account available")
                 bot = self.orch._get_reddit_bot(account)
-                success = bot.post_draft(opp, proj_obj, response_text)
-                if success:
+                # post_draft calls time.sleep (20-180s human delay) — run in thread
+                import asyncio
+                result = await asyncio.to_thread(bot.post_draft, opp, proj_obj, response_text)
+                if result:
                     self.orch.rate_limiter.record_action(account["username"], "reddit")
                     self.orch.account_mgr.mark_healthy("reddit", account["username"])
-                    return {"ok": True}
+                    comment_url = result if isinstance(result, str) else ""
+                    return {"ok": True, "comment_url": comment_url}
                 raise HTTPException(status_code=500, detail="Post failed — check logs")
             except HTTPException:
                 raise

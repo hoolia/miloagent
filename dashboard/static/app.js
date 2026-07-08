@@ -73,6 +73,7 @@ function toast(msg, type, opts) {
   }, dur);
 
   while (container.children.length > 8) container.removeChild(container.firstChild);
+  return el;
 }
 
 // ══════════════════════════════════════════════════════════════
@@ -827,13 +828,16 @@ async function loadQueue() {
     const sc = o.score >= 7 ? 'var(--green)' : o.score >= 4 ? 'var(--yellow)' : 'var(--text3)';
     const ts = (o.timestamp || '').split('T')[0] || (o.timestamp || '').split(' ')[0] || '';
     const draft = esc(o.draft_response || '');
+    const postUrl = o.url || `https://www.reddit.com/r/${sub}`;
     return `
 <div class="card" style="margin-bottom:14px" id="queue-card-${o.id}">
   <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;flex-wrap:wrap;margin-bottom:10px">
-    <div>
+    <div style="flex:1;min-width:0">
       <span style="color:var(--orange);font-family:var(--font-data);font-size:11px;font-weight:700">r/${sub}</span>
       <span style="color:var(--text3);font-size:11px;margin-left:8px">${ts}</span>
-      <div style="font-size:14px;color:var(--text);margin-top:4px;font-weight:600">${title}</div>
+      <div style="font-size:14px;margin-top:4px;font-weight:600">
+        <a href="${postUrl}" target="_blank" rel="noopener" style="color:var(--text);text-decoration:none" onmouseover="this.style.textDecoration='underline'" onmouseout="this.style.textDecoration='none'">${title} &#8599;</a>
+      </div>
     </div>
     <span style="color:${sc};font-family:var(--font-data);font-weight:800;font-size:18px;white-space:nowrap">&#9679; ${score}</span>
   </div>
@@ -851,7 +855,7 @@ async function loadQueue() {
 
 async function approveAction(id) {
   const ta = document.getElementById('draft-' + id);
-  if (!ta || !ta.value.trim()) { showToast('Response text cannot be empty', 'error'); return; }
+  if (!ta || !ta.value.trim()) { toast('Response text cannot be empty', 'error'); return; }
   const btn = ta.closest('.card').querySelector('.btn.primary');
   if (btn) { btn.disabled = true; btn.textContent = 'Posting...'; }
   try {
@@ -862,15 +866,25 @@ async function approveAction(id) {
     });
     const d = await r.json();
     if (d.ok) {
-      showToast('Posted successfully!', 'success');
+      if (d.comment_url) {
+        const t = toast('Posted!', 'success', {duration: 8000});
+        if (t) {
+          const a = document.createElement('a');
+          a.href = d.comment_url; a.target = '_blank'; a.rel = 'noopener';
+          a.textContent = ' View comment ↗'; a.style.cssText = 'color:inherit;text-decoration:underline;margin-left:4px';
+          t.querySelector('span')?.appendChild(a);
+        }
+      } else {
+        toast('Posted successfully!', 'success');
+      }
       document.getElementById('queue-card-' + id)?.remove();
       loadQueue();
     } else {
-      showToast(d.detail || 'Post failed', 'error');
+      toast(d.detail || 'Post failed', 'error');
       if (btn) { btn.disabled = false; btn.textContent = '✓ Approve & Post'; }
     }
   } catch(e) {
-    showToast('Network error', 'error');
+    toast('Network error', 'error');
     if (btn) { btn.disabled = false; btn.textContent = '✓ Approve & Post'; }
   }
 }
@@ -883,13 +897,13 @@ async function rejectAction(id) {
     });
     const d = await r.json();
     if (d.ok) {
-      showToast('Opportunity rejected', 'success');
+      toast('Opportunity rejected', 'success');
       document.getElementById('queue-card-' + id)?.remove();
       loadQueue();
     } else {
-      showToast(d.detail || 'Reject failed', 'error');
+      toast(d.detail || 'Reject failed', 'error');
     }
-  } catch(e) { showToast('Network error', 'error'); }
+  } catch(e) { toast('Network error', 'error'); }
 }
 
 function _applyManualApprovalBtn(enabled) {
@@ -918,8 +932,8 @@ async function toggleManualApproval() {
     });
     await r.json();
     _applyManualApprovalBtn(enabled);
-    showToast(enabled ? 'Manual approval ON — bot will queue drafts' : 'Manual approval OFF — bot posts automatically', 'success');
-  } catch(e) { showToast('Failed to update setting', 'error'); }
+    toast(enabled ? 'Manual approval ON — bot will queue drafts' : 'Manual approval OFF — bot posts automatically', 'success');
+  } catch(e) { toast('Failed to update setting', 'error'); }
 }
 
 // ══════════════════════════════════════════════════════════════

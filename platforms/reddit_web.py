@@ -779,15 +779,17 @@ class RedditWebBot(BasePlatform):
             things = result.get("json", {}).get("data", {}).get("things", [])
             comment_data = things[0].get("data", {}) if things else {}
             comment_id = comment_data.get("id", "unknown")
+            comment_permalink = comment_data.get("permalink", "")
+            comment_url = f"https://reddit.com{comment_permalink}" if comment_permalink else ""
             self.db.log_action(
                 platform="reddit", action_type="comment",
                 account=self._username, project=project_name,
                 target_id=opportunity["target_id"], content=comment_text,
-                metadata={"comment_id": comment_id, "subreddit": opportunity.get("subreddit", ""), "method": "web_session"},
+                metadata={"comment_id": comment_id, "comment_url": comment_url, "subreddit": opportunity.get("subreddit", ""), "method": "web_session"},
             )
             self.db.update_opportunity_status(opportunity["target_id"], "acted")
             logger.info(f"Posted draft on r/{opportunity.get('subreddit','')}: {opportunity.get('title','')[:50]}")
-            return True
+            return comment_url or True
         except Exception as e:
             logger.error(f"Failed to post draft: {e}")
             self._consecutive_failures += 1
