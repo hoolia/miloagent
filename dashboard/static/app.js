@@ -828,7 +828,7 @@ async function loadQueue() {
     const sc = o.score >= 7 ? 'var(--green)' : o.score >= 4 ? 'var(--yellow)' : 'var(--text3)';
     const ts = (o.timestamp || '').split('T')[0] || (o.timestamp || '').split(' ')[0] || '';
     const draft = esc(o.draft_response || '');
-    const postUrl = o.url || `https://www.reddit.com/r/${sub}`;
+    const postUrl = o.url || (o.target_id ? `https://www.reddit.com/r/${sub}/comments/${o.target_id}/` : `https://www.reddit.com/r/${sub}`);
     return `
 <div class="card" style="margin-bottom:14px" id="queue-card-${o.id}">
   <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;flex-wrap:wrap;margin-bottom:10px">

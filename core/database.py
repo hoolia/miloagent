@@ -836,17 +836,19 @@ class Database:
         project: str,
         status: str = "pending",
         metadata: Optional[Dict] = None,
+        url: Optional[str] = None,
     ) -> int:
         """Log a discovered opportunity."""
         cursor = self._execute_write(
             """INSERT OR REPLACE INTO opportunities
                (platform, target_id, title, subreddit_or_query,
-                score, project, status, metadata)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+                score, project, status, metadata, url)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             (
                 platform, target_id, title, subreddit_or_query,
                 score, project, status,
                 json.dumps(metadata) if metadata else None,
+                url,
             ),
         )
         return cursor.lastrowid
