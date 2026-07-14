@@ -1366,17 +1366,24 @@ class RedditWebBot(BasePlatform):
         else:
             score += 0.5
 
-        # Intent signals — question, help, recommendation (0-1.5)
-        question_signals = ["?", "how do i", "how to", "what is", "which",
-                           "anyone know", "can someone", "should i"]
-        if any(sig in text for sig in question_signals):
-            score += 0.8
-
+        # Product-need signals — a post voicing a question, problem, or buying
+        # decision is a lead; a showcase or announcement is not. Weighted high.
+        question_signals = ["?", "how do i", "how to", "how can i", "what is",
+                           "which", "anyone know", "can someone", "should i",
+                           "is it worth", "worth it"]
         help_signals = ["recommend", "looking for", "suggest", "alternative",
                        "advice", "what tool", "what app", "best way",
-                       "struggling", "stuck", "doesn't work", "help me"]
+                       "struggling", "stuck", "doesn't work", "not working",
+                       "help", "need ", "trying to", "want to", "migrat",
+                       "switch from", "moving off", "move off", "move to",
+                       "cheaper", "cost", "budget", "afford"]
+        has_need = False
+        if any(sig in text for sig in question_signals):
+            score += 1.2
+            has_need = True
         if any(sig in text for sig in help_signals):
-            score += 0.7
+            score += 1.2
+            has_need = True
 
         # Upvote ratio bonus (healthy discussion)
         upvote_ratio = opp.get("upvote_ratio", 0.5)
@@ -1389,7 +1396,13 @@ class RedditWebBot(BasePlatform):
         if relevance_terms and keyword_score == 0:
             return min(score, 2.0)
 
-        return min(score, 10.0)
+        # Product-need demotion — a topically relevant post that voices no need
+        # is a showcase, not a lead; demote it so needs rank first. Soft, not a
+        # hard drop: strong-engagement posts can still clear the action floor.
+        if relevance_terms and not has_need:
+            score -= 2.5
+
+        return min(max(score, 0.0), 10.0)
 
     # ── Subreddit Seeding ─────────────────────────────────────────────
 

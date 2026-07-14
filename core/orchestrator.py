@@ -934,7 +934,9 @@ class Orchestrator:
         for platform in platforms:
             # Telegram gets lower min_score because its metrics
             # produce lower scores than Reddit (no upvote counts in scan).
-            min_score = 3.0 if platform == "telegram" else 3.5  # was 5.0 — too high, starved 4/8 projects
+            # Reddit floor raised to 5.0 so product-need posts rank above
+            # topically-relevant showcases (which take a -2.5 no-need demotion).
+            min_score = 3.0 if platform == "telegram" else 5.0
             pending = self.db.get_pending_opportunities(
                 platform=platform, project=proj_name, min_score=min_score, limit=10
             )
