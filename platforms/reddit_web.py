@@ -1371,12 +1371,16 @@ class RedditWebBot(BasePlatform):
         question_signals = ["?", "how do i", "how to", "how can i", "what is",
                            "which", "anyone know", "can someone", "should i",
                            "is it worth", "worth it"]
-        help_signals = ["recommend", "looking for", "suggest", "alternative",
-                       "advice", "what tool", "what app", "best way",
-                       "struggling", "stuck", "doesn't work", "not working",
-                       "help", "need ", "trying to", "want to", "migrat",
-                       "switch from", "moving off", "move off", "move to",
-                       "cheaper", "cost", "budget", "afford"]
+        help_signals = ["recommend", "looking for", "looking to", "suggest",
+                       "alternative", "advice", "what tool", "what app",
+                       "best way", "struggling", "stuck", "doesn't work",
+                       "not working", "help", "need ", "needs ", "trying to",
+                       "want to", "planning", "considering", "evaluat",
+                       "migrat", "switch from", "moving off", "move off",
+                       "move to", "cheaper", "cheapest", "cost", "pricing",
+                       "price", "budget", "afford", "quote", "provider",
+                       "vendor", "requirement", "compliance", "residency",
+                       "problem", "issue", "error", "how much"]
         has_need = False
         if any(sig in text for sig in question_signals):
             score += 1.2
