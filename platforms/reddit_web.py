@@ -1300,6 +1300,7 @@ class RedditWebBot(BasePlatform):
         body_lower = opp.get("body", "").lower()
         text = f"{title_lower} {body_lower}"
         keywords = reddit_config.get("keywords", [])
+        relevance_terms = reddit_config.get("relevance_terms", [])
 
         # Keyword matches (0-4) — title matches worth more
         keyword_score = 0.0
@@ -1309,6 +1310,12 @@ class RedditWebBot(BasePlatform):
                 keyword_score += 1.5  # Title match = high relevance
             elif kw_lower in body_lower:
                 keyword_score += 0.8  # Body match = moderate
+        # Short high-signal terms — tolerate the phrasing variation that
+        # long keyword phrases miss (e.g. "openshift", "self hosted", "gpu").
+        # Word-boundary match so "aws" does not fire on "lawsuit".
+        for term in relevance_terms:
+            if re.search(r"\b" + re.escape(term.lower()) + r"\b", text):
+                keyword_score += 1.0
         score += min(keyword_score, 4.0)
 
         # Engagement velocity (0-2) — upvotes per hour
@@ -1375,6 +1382,12 @@ class RedditWebBot(BasePlatform):
         upvote_ratio = opp.get("upvote_ratio", 0.5)
         if upvote_ratio >= 0.9:
             score += 0.3
+
+        # Relevance gate — with relevance_terms configured, a post matching no
+        # keyword and no relevance term is off-topic; cap it below the action and
+        # purge floors so engagement signals alone can never queue it.
+        if relevance_terms and keyword_score == 0:
+            return min(score, 2.0)
 
         return min(score, 10.0)
 
