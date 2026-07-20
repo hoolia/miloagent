@@ -121,6 +121,10 @@ class RedditWebBot(BasePlatform):
         self._max_failures = 5
         self._circuit_breaker_opened_at: Optional[float] = None
 
+        # Last post_draft outcome, surfaced to the dashboard approve endpoint
+        self._last_post_error: str = ""
+        self._last_post_delay: float = 0.0
+
         # Rate limit tracking: don't retry until this timestamp
         self._ratelimit_until: float = 0.0
 
@@ -702,8 +706,14 @@ class RedditWebBot(BasePlatform):
     def post_draft(self, opportunity: Dict, project: Dict, comment_text: str) -> bool:
         """Post a pre-generated comment text to Reddit. Returns True on success."""
         project_name = project.get("project", {}).get("name", "unknown")
+        self._last_post_error = ""
+        self._last_post_delay = 0.0
         if not self._ensure_auth():
             logger.error("Cannot post draft: Reddit authentication failed")
+            self._last_post_error = (
+                "Reddit authentication failed - the account's token_v2 has most "
+                "likely expired and needs refreshing."
+            )
             self._consecutive_failures += 1
             return False
         try:
@@ -712,6 +722,7 @@ class RedditWebBot(BasePlatform):
                 opportunity.get("body", ""),
                 comment_text,
             )
+            self._last_post_delay = delay
             time.sleep(delay)
             fullname = opportunity.get("fullname", "")
             if not fullname:
@@ -746,12 +757,20 @@ class RedditWebBot(BasePlatform):
                 return False
             if resp.status_code == 429:
                 logger.warning("Reddit rate limited on draft post")
+                self._last_post_error = (
+                    "Reddit rate limited this account (HTTP 429). Wait a few "
+                    "minutes before approving another comment."
+                )
                 self._consecutive_failures += 1
                 return False
             if resp.status_code == 403:
                 sub = opportunity.get("subreddit", opportunity.get("subreddit_or_query", ""))
                 if sub:
                     self.db.ban_account_from_sub(self._username, sub)
+                self._last_post_error = (
+                    f"Reddit refused the comment (HTTP 403) in r/{sub or '?'} - "
+                    "the account may be banned or restricted in that subreddit."
+                )
                 self._authenticated = False
                 self._modhash = ""
                 self._consecutive_failures += 1
@@ -759,11 +778,15 @@ class RedditWebBot(BasePlatform):
             try:
                 result = resp.json()
             except Exception:
+                self._last_post_error = (
+                    f"Unexpected non-JSON response from Reddit (HTTP {resp.status_code})."
+                )
                 self._consecutive_failures += 1
                 return False
             errors = result.get("json", {}).get("errors", [])
             if errors:
                 logger.error(f"Reddit draft post error: {errors}")
+                self._last_post_error = self._describe_post_errors(errors)
                 self._consecutive_failures += 1
                 return False
             self._consecutive_failures = 0
@@ -793,8 +816,34 @@ class RedditWebBot(BasePlatform):
             return comment_url or True
         except Exception as e:
             logger.error(f"Failed to post draft: {e}")
+            self._last_post_error = f"Posting failed: {e}"
             self._consecutive_failures += 1
             return False
+
+    def _describe_post_errors(self, errors: list) -> str:
+        """Turn Reddit's raw error list into a message a human can act on."""
+        flat = []
+        for e in errors:
+            if isinstance(e, list):
+                flat.append([str(x) for x in e])
+            else:
+                flat.append([str(e)])
+        for parts in flat:
+            code = parts[0].upper() if parts else ""
+            msg = parts[1] if len(parts) > 1 else ""
+            if code == "RATELIMIT":
+                wait = self._parse_ratelimit_wait(msg)
+                return (
+                    f"Reddit rate limit: wait about {wait} minute(s) before "
+                    "approving another comment on this account."
+                )
+            if code in ("THREAD_LOCKED", "TOO_OLD"):
+                return "Reddit rejected it: the thread is locked or archived."
+            if code == "DELETED_COMMENT":
+                return "Reddit rejected it: the parent post was deleted."
+            if msg:
+                return f"Reddit rejected it ({code}): {msg}"
+        return f"Reddit rejected it: {errors}"
 
     def act(self, opportunity: Dict, project: Dict, hub_reference: str = "",
             research_context: str = "", failure_rules: str = "") -> bool:

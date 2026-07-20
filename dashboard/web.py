@@ -1040,12 +1040,20 @@ h1{{color:#ff6b35}}p{{color:#a0a0c0}}</style></head>
                 # post_draft calls time.sleep (20-180s human delay) — run in thread
                 import asyncio
                 result = await asyncio.to_thread(bot.post_draft, opp, proj_obj, response_text)
+                delay_seconds = round(getattr(bot, "_last_post_delay", 0.0))
                 if result:
                     self.orch.rate_limiter.record_action(account["username"], "reddit")
                     self.orch.account_mgr.mark_healthy("reddit", account["username"])
                     comment_url = result if isinstance(result, str) else ""
-                    return {"ok": True, "comment_url": comment_url}
-                raise HTTPException(status_code=500, detail="Post failed — check logs")
+                    return {
+                        "ok": True,
+                        "comment_url": comment_url,
+                        "delay_seconds": delay_seconds,
+                    }
+                # Surface the real reason (rate limit, ban, auth) instead of "check logs"
+                reason = getattr(bot, "_last_post_error", "") or "Post failed — check logs"
+                status = 429 if "rate limit" in reason.lower() else 502
+                raise HTTPException(status_code=status, detail=reason)
             except HTTPException:
                 raise
             except Exception as e:
