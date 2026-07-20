@@ -810,18 +810,42 @@ function renderOpps(d) {
 // ══════════════════════════════════════════════════════════════
 // APPROVAL QUEUE
 // ══════════════════════════════════════════════════════════════
-async function loadQueue() {
+// Queue cards are rebuilt wholesale on render, which resets scroll position and
+// discards in-progress edits. The 5s refresh must therefore only touch the DOM
+// when the data actually changed and the user isn't mid-interaction.
+let _queueSig = '';
+const _approving = new Set();
+
+async function loadQueue(force) {
   const el = document.getElementById('queueList');
   if (!el) return;
-  el.innerHTML = '<p class="no-data">Loading...</p>';
+  const firstLoad = !el.dataset.loaded;
+  if (firstLoad) el.innerHTML = '<p class="no-data">Loading...</p>';
   const items = await api('/api/queue').catch(() => []);
+  const list = Array.isArray(items) ? items : [];
   const badge = document.getElementById('tabQueueBadge');
   const metric = document.getElementById('mrQueue');
-  const count = Array.isArray(items) ? items.length : 0;
+  const count = list.length;
   if (badge) { badge.textContent = count || ''; badge.style.display = count ? '' : 'none'; }
   if (metric) metric.textContent = count;
-  if (!count) { el.innerHTML = '<p class="no-data">No items pending approval. Enable Manual Approval Mode and trigger an Act cycle.</p>'; return; }
-  el.innerHTML = items.map(o => {
+
+  const sig = JSON.stringify(list.map(o => [o.id, o.status, o.score, o.draft_response]));
+  const editing = el.contains(document.activeElement);
+  if (!force && !firstLoad && (sig === _queueSig || editing || _approving.size)) return;
+  _queueSig = sig;
+
+  if (!count) {
+    el.innerHTML = '<p class="no-data">No items pending approval. Enable Manual Approval Mode and trigger an Act cycle.</p>';
+    el.dataset.loaded = '1';
+    return;
+  }
+  const scrollY = window.scrollY;
+  const edits = {};
+  list.forEach(o => {
+    const t = document.getElementById('draft-' + o.id);
+    if (t && t.value !== (o.draft_response || '')) edits[o.id] = t.value;
+  });
+  el.innerHTML = list.map(o => {
     const sub = esc(o.subreddit_or_query || o.subreddit || '');
     const title = esc((o.title || '').substring(0, 120));
     const score = (o.score || 0).toFixed(1);
@@ -852,6 +876,13 @@ async function loadQueue() {
   </div>
 </div>`;
   }).join('');
+  // Carry over any locally edited drafts so a refresh never discards typed text.
+  Object.entries(edits).forEach(([id, value]) => {
+    const t = document.getElementById('draft-' + id);
+    if (t) t.value = value;
+  });
+  el.dataset.loaded = '1';
+  window.scrollTo(0, scrollY);
 }
 
 async function approveAction(id) {
@@ -875,8 +906,12 @@ async function approveAction(id) {
   };
   tick();
   const timer = setInterval(() => { elapsed += 1; tick(); }, 1000);
+  // Held for the whole 20-180s post, so the periodic refresh doesn't rebuild
+  // this card out from under the countdown.
+  _approving.add(id);
   const restore = () => {
     clearInterval(timer);
+    _approving.delete(id);
     if (btn) { btn.disabled = false; btn.textContent = '✓ Approve & Post'; }
     if (rejectBtn) rejectBtn.disabled = false;
   };
@@ -892,6 +927,7 @@ async function approveAction(id) {
     const d = await r.json();
     if (r.ok && d.ok) {
       clearInterval(timer);
+      _approving.delete(id);
       const after = d.delay_seconds ? ` after ${d.delay_seconds}s` : '';
       const t = toast('Posted' + after + '!', 'success', {duration: 8000});
       if (t && d.comment_url) {
@@ -901,7 +937,7 @@ async function approveAction(id) {
         t.querySelector('span')?.appendChild(a);
       }
       document.getElementById('queue-card-' + id)?.remove();
-      loadQueue();
+      loadQueue(true);
     } else {
       // Keep the reason on the card - a toast disappears before it's read.
       restore();
@@ -936,7 +972,7 @@ async function rejectAction(id) {
     if (d.ok) {
       toast('Opportunity rejected', 'success');
       document.getElementById('queue-card-' + id)?.remove();
-      loadQueue();
+      loadQueue(true);
     } else {
       toast(d.detail || 'Reject failed', 'error');
     }
