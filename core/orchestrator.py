@@ -3421,19 +3421,44 @@ class Orchestrator:
             try:
                 with open(pid_file) as f:
                     old_pid = int(f.read().strip())
-                os.kill(old_pid, 0)
+            except (OSError, ValueError):
+                old_pid = None
+            if old_pid and old_pid != os.getpid() and self._pid_is_miloagent(old_pid):
                 msg = (
                     f"Another instance is running (PID {old_pid}). "
                     f"Stop it first or delete {pid_file}"
                 )
                 logger.error(msg)
                 raise RuntimeError(msg)
-            except (OSError, ValueError):
-                pass  # Stale PID file — will be overwritten
+            if old_pid:
+                logger.info(
+                    f"Ignoring stale PID file {pid_file} (PID {old_pid} is not a "
+                    f"running MiloAgent)"
+                )
 
         with open(pid_file, "w") as f:
             f.write(str(os.getpid()))
         logger.debug(f"PID file written: {pid_file}")
+
+    @staticmethod
+    def _pid_is_miloagent(pid: int) -> bool:
+        """Is `pid` a live MiloAgent process?
+
+        A bare os.kill(pid, 0) only proves some process owns the pid. The pid
+        file lives on a persistent volume, so after a container restart it still
+        holds the old pid — usually 1, which in a container is always alive and
+        is typically this very process. Confirm the command line too.
+        """
+        try:
+            os.kill(pid, 0)
+        except OSError:
+            return False  # nothing running under that pid
+        try:
+            with open(f"/proc/{pid}/cmdline", "rb") as f:
+                cmdline = f.read().replace(b"\0", b" ").decode(errors="ignore")
+        except OSError:
+            return True  # no procfs (non-Linux) — fall back to "pid is alive"
+        return "miloagent" in cmdline.lower()
 
     def _remove_pid(self):
         """Remove PID file."""
