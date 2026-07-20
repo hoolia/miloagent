@@ -845,6 +845,7 @@ async function loadQueue() {
     <label style="font-size:11px;color:var(--text3);text-transform:uppercase;letter-spacing:.5px">Draft Response</label>
     <textarea id="draft-${o.id}" rows="5" style="width:100%;margin-top:6px;background:var(--bg2,#0d0d1a);color:var(--text);border:1px solid var(--border,#2a2a4a);border-radius:6px;padding:10px;font-size:13px;font-family:inherit;resize:vertical;box-sizing:border-box">${draft}</textarea>
   </div>
+  <div id="queue-status-${o.id}" style="display:none;font-size:12px;margin-bottom:10px;padding:8px 10px;border-radius:6px;line-height:1.45"></div>
   <div style="display:flex;gap:10px">
     <button class="btn primary" onclick="approveAction(${o.id})" style="flex:1">&#10003; Approve &amp; Post</button>
     <button class="btn danger" onclick="rejectAction(${o.id})" style="flex:0 0 auto">&#10007; Reject</button>
@@ -856,8 +857,32 @@ async function loadQueue() {
 async function approveAction(id) {
   const ta = document.getElementById('draft-' + id);
   if (!ta || !ta.value.trim()) { toast('Response text cannot be empty', 'error'); return; }
-  const btn = ta.closest('.card').querySelector('.btn.primary');
+  const card = ta.closest('.card');
+  const btn = card.querySelector('.btn.primary');
+  const rejectBtn = card.querySelector('.btn.danger');
+  const status = document.getElementById('queue-status-' + id);
+
+  // The bot waits 20-180s before posting (human-like delay), so show progress
+  // instead of a frozen button.
+  let elapsed = 0;
+  const tick = () => {
+    if (!status) return;
+    status.style.display = '';
+    status.style.background = 'rgba(255,170,0,.10)';
+    status.style.color = 'var(--yellow,#fa0)';
+    status.innerHTML = `&#9203; Posting... waiting <b>${elapsed}s</b> so far. `
+      + `Milo pauses 20-180s before commenting so Reddit doesn't flag it as a bot.`;
+  };
+  tick();
+  const timer = setInterval(() => { elapsed += 1; tick(); }, 1000);
+  const restore = () => {
+    clearInterval(timer);
+    if (btn) { btn.disabled = false; btn.textContent = '✓ Approve & Post'; }
+    if (rejectBtn) rejectBtn.disabled = false;
+  };
   if (btn) { btn.disabled = true; btn.textContent = 'Posting...'; }
+  if (rejectBtn) rejectBtn.disabled = true;
+
   try {
     const r = await fetch('/api/queue/' + id + '/approve', {
       method: 'POST',
@@ -865,27 +890,39 @@ async function approveAction(id) {
       body: JSON.stringify({response: ta.value.trim()}),
     });
     const d = await r.json();
-    if (d.ok) {
-      if (d.comment_url) {
-        const t = toast('Posted!', 'success', {duration: 8000});
-        if (t) {
-          const a = document.createElement('a');
-          a.href = d.comment_url; a.target = '_blank'; a.rel = 'noopener';
-          a.textContent = ' View comment ↗'; a.style.cssText = 'color:inherit;text-decoration:underline;margin-left:4px';
-          t.querySelector('span')?.appendChild(a);
-        }
-      } else {
-        toast('Posted successfully!', 'success');
+    if (r.ok && d.ok) {
+      clearInterval(timer);
+      const after = d.delay_seconds ? ` after ${d.delay_seconds}s` : '';
+      const t = toast('Posted' + after + '!', 'success', {duration: 8000});
+      if (t && d.comment_url) {
+        const a = document.createElement('a');
+        a.href = d.comment_url; a.target = '_blank'; a.rel = 'noopener';
+        a.textContent = ' View comment ↗'; a.style.cssText = 'color:inherit;text-decoration:underline;margin-left:4px';
+        t.querySelector('span')?.appendChild(a);
       }
       document.getElementById('queue-card-' + id)?.remove();
       loadQueue();
     } else {
-      toast(d.detail || 'Post failed', 'error');
-      if (btn) { btn.disabled = false; btn.textContent = '✓ Approve & Post'; }
+      // Keep the reason on the card - a toast disappears before it's read.
+      restore();
+      const reason = d.detail || 'Post failed';
+      if (status) {
+        status.style.display = '';
+        status.style.background = 'rgba(255,60,60,.10)';
+        status.style.color = 'var(--red,#f55)';
+        status.innerHTML = `&#9888; Not posted - ${esc(reason)}`;
+      }
+      toast(reason, 'error');
     }
   } catch(e) {
+    restore();
+    if (status) {
+      status.style.display = '';
+      status.style.background = 'rgba(255,60,60,.10)';
+      status.style.color = 'var(--red,#f55)';
+      status.innerHTML = '&#9888; Network error - the comment may or may not have posted. Check Reddit before retrying.';
+    }
     toast('Network error', 'error');
-    if (btn) { btn.disabled = false; btn.textContent = '✓ Approve & Post'; }
   }
 }
 
