@@ -426,21 +426,7 @@
 <div id="modal-editProject" class="modal-overlay" onclick="if(event.target===this)closeModal()">
   <div class="modal">
     <h3>Edit Project: <span id="editProjName"></span></h3>
-    <div class="form-row">
-      <div class="form-group"><label>Enabled</label>
-        <select class="form-input" id="epEnabled"><option value="true">Yes</option><option value="false">No</option></select>
-      </div>
-      <div class="form-group"><label>Weight</label><input class="form-input" id="epWeight" type="number" step="0.1"></div>
-    </div>
-    <div class="form-group"><label>URL</label><input class="form-input" id="epUrl"></div>
-    <div class="form-group"><label>Description</label><input class="form-input" id="epDesc"></div>
-    <div class="form-group"><label>Tagline</label><input class="form-input" id="epTagline"></div>
-    <div class="form-group"><label>Tone Style</label>
-      <select class="form-input" id="epTone"><option>helpful_casual</option><option>expert</option><option>friendly</option><option>neutral</option></select>
-    </div>
-    <div class="form-group"><label>Reddit Primary Subreddits (comma-sep)</label><input class="form-input" id="epSubsPrimary"></div>
-    <div class="form-group"><label>Reddit Secondary Subreddits (comma-sep)</label><input class="form-input" id="epSubsSecondary"></div>
-    <div class="form-group"><label>Reddit Keywords (comma-sep)</label><input class="form-input" id="epRedditKw"></div>
+    <div id="epFields"></div>
     <div class="modal-actions">
       <button class="btn" onclick="closeModal()">Cancel</button>
       <button class="btn primary" onclick="submitEditProject()">Save Changes</button>
