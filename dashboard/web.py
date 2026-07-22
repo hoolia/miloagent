@@ -16,6 +16,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Literal, Optional
 
 from fastapi import (
+    Body,
     Depends,
     FastAPI,
     HTTPException,
@@ -29,6 +30,8 @@ from fastapi.responses import FileResponse
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
+
+from dashboard.project_schema import PROJECT_FIELD_SCHEMA
 
 try:
     from passlib.context import CryptContext
@@ -233,20 +236,6 @@ class ProjectCreate(BaseModel):
     tagline: str = ""
     selling_points: list = []
     target_audiences: list = []
-
-
-class ProjectUpdate(BaseModel):
-    enabled: Optional[bool] = None
-    weight: Optional[float] = None
-    description: Optional[str] = None
-    tagline: Optional[str] = None
-    url: Optional[str] = None
-    reddit_subreddits_primary: Optional[list] = None
-    reddit_subreddits_secondary: Optional[list] = None
-    reddit_keywords: Optional[list] = None
-    twitter_keywords: Optional[list] = None
-    twitter_hashtags: Optional[list] = None
-    tone_style: Optional[str] = None
 
 
 class AccountCreate(BaseModel):
@@ -602,6 +591,11 @@ class WebDashboard:
             return result
 
         # ── GET /api/projects/{name} ───────────────────────
+        # ── GET /api/projects/schema ───────────────────────
+        @app.get("/api/projects/schema")
+        async def get_project_schema(_=Depends(self._verify_token)):
+            return PROJECT_FIELD_SCHEMA
+
         @app.get("/api/projects/{name}")
         async def get_project_detail(name: str, _=Depends(self._verify_token)):
             proj = self.orch.business_mgr.get_project(name)
@@ -631,52 +625,18 @@ class WebDashboard:
 
         # ── PUT /api/projects/{name} ───────────────────────
         @app.put("/api/projects/{name}")
-        async def update_project(name: str, body: ProjectUpdate, _=Depends(self._verify_token)):
-            import yaml
-            # Find project file
-            projects_dir = self.orch.business_mgr.projects_dir
-            for f in projects_dir.glob("*.yaml"):
-                try:
-                    with open(f) as fh:
-                        data = yaml.safe_load(fh) or {}
-                    if data.get("project", {}).get("name", "").lower() != name.lower():
-                        continue
-                    # Apply updates
-                    proj = data["project"]
-                    if body.enabled is not None:
-                        proj["enabled"] = body.enabled
-                    if body.weight is not None:
-                        proj["weight"] = body.weight
-                    if body.description is not None:
-                        proj["description"] = body.description
-                    if body.tagline is not None:
-                        proj["tagline"] = body.tagline
-                    if body.url is not None:
-                        proj["url"] = body.url
-                    if body.tone_style is not None:
-                        data.setdefault("tone", {})["style"] = body.tone_style
-                    # Reddit config
-                    reddit = data.setdefault("reddit", {})
-                    subs = reddit.setdefault("target_subreddits", {})
-                    if body.reddit_subreddits_primary is not None:
-                        subs["primary"] = body.reddit_subreddits_primary
-                    if body.reddit_subreddits_secondary is not None:
-                        subs["secondary"] = body.reddit_subreddits_secondary
-                    if body.reddit_keywords is not None:
-                        reddit["keywords"] = body.reddit_keywords
-                    # Twitter config
-                    twitter = data.setdefault("twitter", {})
-                    if body.twitter_keywords is not None:
-                        twitter["keywords"] = body.twitter_keywords
-                    if body.twitter_hashtags is not None:
-                        twitter["hashtags"] = body.twitter_hashtags
-                    with open(f, "w") as fh:
-                        yaml.dump(data, fh, default_flow_style=False, sort_keys=False)
-                    self.orch.business_mgr.reload()
-                    return {"ok": True}
-                except Exception as e:
-                    raise HTTPException(status_code=500, detail=str(e))
-            raise HTTPException(status_code=404, detail="Project not found")
+        async def update_project(name: str, body: dict = Body(...), _=Depends(self._verify_token)):
+            if not isinstance(body, dict):
+                raise HTTPException(status_code=400, detail="Body must be an object")
+            try:
+                filepath = self.orch.business_mgr.update_project(name, body)
+            except ValueError as e:
+                raise HTTPException(status_code=400, detail=str(e))
+            except Exception as e:
+                raise HTTPException(status_code=500, detail=str(e))
+            if not filepath:
+                raise HTTPException(status_code=404, detail="Project not found")
+            return {"ok": True}
 
         # ── DELETE /api/projects/{name} ────────────────────
         @app.delete("/api/projects/{name}")

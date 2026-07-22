@@ -12,6 +12,20 @@ import yaml
 logger = logging.getLogger(__name__)
 
 
+def _deep_merge(base: Dict, patch: Dict) -> Dict:
+    """Merge patch into base: dicts merge key-wise, lists/scalars replace."""
+    for key, val in patch.items():
+        if (
+            key in base
+            and isinstance(base[key], dict)
+            and isinstance(val, dict)
+        ):
+            _deep_merge(base[key], val)
+        else:
+            base[key] = val
+    return base
+
+
 class BusinessManager:
     """Manages project YAML files with hot-reload capability.
 
@@ -239,3 +253,33 @@ class BusinessManager:
             except Exception:
                 continue
         return None
+
+    def save_project(self, name: str, data: Dict) -> Optional[str]:
+        """Write a full project document to its file and reload.
+
+        Returns the filepath, or None if the project does not exist.
+        """
+        filepath = self.get_project_filepath(name)
+        if not filepath:
+            return None
+        with open(filepath, "w") as f:
+            yaml.dump(data, f, default_flow_style=False, sort_keys=False)
+        self.reload()
+        return filepath
+
+    def update_project(self, name: str, patch: Dict) -> Optional[str]:
+        """Deep-merge patch into the on-disk project and save.
+
+        Dicts merge key-wise; lists and scalars in the patch replace their
+        counterparts, so unedited and unknown keys are preserved. Returns the
+        filepath, or None if the project does not exist.
+        """
+        filepath = self.get_project_filepath(name)
+        if not filepath:
+            return None
+        with open(filepath) as fh:
+            data = yaml.safe_load(fh) or {}
+        _deep_merge(data, patch)
+        if not data.get("project", {}).get("name"):
+            raise ValueError("project.name cannot be empty")
+        return self.save_project(name, data)

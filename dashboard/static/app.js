@@ -1435,44 +1435,184 @@ async function submitProject() {
   } catch(e) { toast(e.message,'error'); }
 }
 
+// ── Schema-driven project editor ─────────────────────────
+let _epSchema = null;
+let _epRoot = null;   // top-level field controllers for the open project
+
+function _el(tag, cls, txt) {
+  const e = document.createElement(tag);
+  if (cls) e.className = cls;
+  if (txt != null) e.textContent = txt;
+  return e;
+}
+
+// Build a synthetic schema field for a key not described in PROJECT_FIELD_SCHEMA.
+function _inferField(key, value) {
+  let widget = 'text';
+  if (Array.isArray(value)) {
+    widget = (value.length && value.every(v => v && typeof v === 'object' && !Array.isArray(v))) ? 'json' : 'list';
+  } else if (value && typeof value === 'object') {
+    widget = 'group';
+  } else if (typeof value === 'boolean') {
+    widget = 'bool';
+  } else if (typeof value === 'number') {
+    widget = 'number';
+  }
+  const f = { key, label: key, widget };
+  if (widget === 'group') f.fields = Object.keys(value || {}).map(k => _inferField(k, value[k]));
+  return f;
+}
+
+// Returns { node, key, collect(), present() }.
+// present() decides whether to send the field: existing fields always send
+// (so edits/clears persist); absent fields send only once given a value.
+function buildField(field, value) {
+  const had = value !== undefined;
+  const w = field.widget;
+
+  if (w === 'group') {
+    const wrap = _el('div', 'ep-group');
+    wrap.appendChild(_el('div', 'ep-group-title', field.label));
+    const val = (value && typeof value === 'object') ? value : {};
+    const declared = (field.fields || []).slice();
+    const declaredKeys = new Set(declared.map(f => f.key));
+    Object.keys(val).forEach(k => { if (!declaredKeys.has(k)) declared.push(_inferField(k, val[k])); });
+    const children = declared.map(f => buildField(f, val[f.key]));
+    children.forEach(c => wrap.appendChild(c.node));
+    const collect = () => { const o = {}; children.forEach(c => { if (c.present()) o[c.key] = c.collect(); }); return o; };
+    return { node: wrap, key: field.key, collect, present: () => had || Object.keys(collect()).length > 0 };
+  }
+
+  if (w === 'listdict') {
+    // Data/schema mismatch (e.g. a list of plain strings where dicts are
+    // expected): edit as JSON so nothing is silently dropped on save.
+    if (Array.isArray(value) && !value.every(v => v && typeof v === 'object' && !Array.isArray(v))) {
+      return buildField({ key: field.key, label: field.label, widget: 'json' }, value);
+    }
+    const wrap = _el('div', 'ep-group');
+    wrap.appendChild(_el('div', 'ep-group-title', field.label));
+    const rowsBox = _el('div', 'ep-rows');
+    wrap.appendChild(rowsBox);
+    const rows = [];
+    const addRow = (rowVal) => {
+      const rowEl = _el('div', 'ep-row');
+      const subs = (field.item || []).map(f => buildField(f, rowVal ? rowVal[f.key] : undefined));
+      subs.forEach(s => rowEl.appendChild(s.node));
+      const rm = _el('button', 'btn ep-rm', '×');
+      rm.type = 'button';
+      const entry = { rowEl, subs };
+      rm.onclick = () => { rowsBox.removeChild(rowEl); const i = rows.indexOf(entry); if (i >= 0) rows.splice(i, 1); };
+      rowEl.appendChild(rm);
+      rows.push(entry);
+      rowsBox.appendChild(rowEl);
+    };
+    (Array.isArray(value) ? value : []).forEach(v => addRow(v));
+    const addBtn = _el('button', 'btn ep-add', '+ add ' + field.label);
+    addBtn.type = 'button';
+    addBtn.onclick = () => addRow(null);
+    wrap.appendChild(addBtn);
+    const collect = () => rows.map(r => {
+      const o = {}; r.subs.forEach(s => { if (s.present()) o[s.key] = s.collect(); }); return o;
+    }).filter(o => Object.keys(o).length > 0);
+    return { node: wrap, key: field.key, collect, present: () => had || collect().length > 0 };
+  }
+
+  // Scalar widgets: if the value shape does not match (a dict/list where a
+  // scalar is expected, or a non-scalar item in a string list), edit as JSON
+  // so hand-authored or malformed data round-trips losslessly.
+  const _isScalar = (v) => v === null || typeof v !== 'object';
+  if (value !== undefined && w !== 'json') {
+    const bad = (w === 'list')
+      ? !(Array.isArray(value) && value.every(_isScalar))
+      : !_isScalar(value);
+    if (bad) return buildField({ key: field.key, label: field.label, widget: 'json' }, value);
+  }
+
+  const grp = _el('div', 'form-group');
+  const label = _el('label', null, field.label);
+  grp.appendChild(label);
+  let input, collect, present;
+
+  if (w === 'bool') {
+    input = _el('select', 'form-input');
+    input.innerHTML = '<option value="true">Yes</option><option value="false">No</option>';
+    input.value = value === true ? 'true' : 'false';
+    collect = () => input.value === 'true';
+    present = () => had || input.value === 'true';
+  } else if (w === 'enum') {
+    input = _el('select', 'form-input');
+    const choices = (field.choices || []).slice();
+    if (!had) { const o = _el('option', null, '(unset)'); o.value = ''; input.appendChild(o); }
+    if (had && value != null && !choices.includes(value)) choices.unshift(String(value));
+    choices.forEach(c => { const o = _el('option', null, c); o.value = c; input.appendChild(o); });
+    input.value = had && value != null ? String(value) : '';
+    collect = () => input.value;
+    present = () => had || input.value !== '';
+  } else if (w === 'number') {
+    input = _el('input', 'form-input');
+    input.type = 'number';
+    if (field.step) input.step = field.step;
+    if (value != null) input.value = value;
+    collect = () => { const t = input.value.trim(); if (t === '') return null; const n = Number(t); return isNaN(n) ? null : n; };
+    present = () => had || input.value.trim() !== '';
+  } else if (w === 'list') {
+    input = _el('input', 'form-input');
+    input.value = Array.isArray(value) ? value.join(', ') : '';
+    label.textContent = field.label + ' (comma-sep)';
+    collect = () => splitCSV(input.value);
+    present = () => had || splitCSV(input.value).length > 0;
+  } else if (w === 'json') {
+    input = _el('textarea', 'form-input');
+    input.rows = 4;
+    input.value = value !== undefined ? JSON.stringify(value, null, 2) : '';
+    label.textContent = field.label + ' (JSON)';
+    collect = () => { const t = input.value.trim(); return t === '' ? null : JSON.parse(t); };
+    present = () => had || input.value.trim() !== '';
+  } else if (w === 'textarea') {
+    input = _el('textarea', 'form-input');
+    input.rows = 3;
+    if (value != null) input.value = value;
+    collect = () => input.value.trim();
+    present = () => had || input.value.trim() !== '';
+  } else {
+    input = _el('input', 'form-input');
+    if (value != null) input.value = value;
+    collect = () => input.value.trim();
+    present = () => had || input.value.trim() !== '';
+  }
+
+  grp.appendChild(input);
+  return { node: grp, key: field.key, collect, present };
+}
+
 async function editProject(name) {
   _editingProject = name;
   try {
-    const d = await api('/api/projects/'+encodeURIComponent(name));
-    const proj = d.project||{};
+    if (!_epSchema) _epSchema = await api('/api/projects/schema');
+    const doc = (await api('/api/projects/' + encodeURIComponent(name))) || {};
     document.getElementById('editProjName').textContent = name;
-    document.getElementById('epEnabled').value = proj.enabled!==false?'true':'false';
-    document.getElementById('epWeight').value = proj.weight||1.0;
-    document.getElementById('epUrl').value = proj.url||'';
-    document.getElementById('epDesc').value = proj.description||'';
-    document.getElementById('epTagline').value = proj.tagline||'';
-    document.getElementById('epTone').value = (d.tone||{}).style||'helpful_casual';
-    const reddit = d.reddit||{};
-    const subs = reddit.target_subreddits||{};
-    document.getElementById('epSubsPrimary').value = (subs.primary||[]).join(', ');
-    document.getElementById('epSubsSecondary').value = (subs.secondary||[]).join(', ');
-    document.getElementById('epRedditKw').value = (reddit.keywords||[]).join(', ');
+    const host = document.getElementById('epFields');
+    host.innerHTML = '';
+    const declared = _epSchema.slice();
+    const declaredKeys = new Set(declared.map(f => f.key));
+    Object.keys(doc).forEach(k => { if (!declaredKeys.has(k)) declared.push(_inferField(k, doc[k])); });
+    _epRoot = declared.map(f => buildField(f, doc[f.key]));
+    _epRoot.forEach(c => host.appendChild(c.node));
     openModal('editProject');
-  } catch(e) { toast('Error loading project','error'); }
+  } catch (e) { toast('Error loading project', 'error'); }
 }
 
 async function submitEditProject() {
-  const body = {
-    enabled:document.getElementById('epEnabled').value==='true',
-    weight:parseFloat(document.getElementById('epWeight').value)||1.0,
-    url:document.getElementById('epUrl').value.trim()||null,
-    description:document.getElementById('epDesc').value.trim()||null,
-    tagline:document.getElementById('epTagline').value.trim()||null,
-    tone_style:document.getElementById('epTone').value||null,
-    reddit_subreddits_primary:splitCSV(document.getElementById('epSubsPrimary').value),
-    reddit_subreddits_secondary:splitCSV(document.getElementById('epSubsSecondary').value),
-    reddit_keywords:splitCSV(document.getElementById('epRedditKw').value),
-  };
+  let body;
   try {
-    const d = await apiPut('/api/projects/'+encodeURIComponent(_editingProject), body);
-    if (d.ok) { toast('Project updated','success'); closeModal(); refresh(); }
-    else toast(d.detail||'Failed','error');
-  } catch(e) { toast(e.message,'error'); }
+    body = {};
+    _epRoot.forEach(c => { if (c.present()) body[c.key] = c.collect(); });
+  } catch (e) { toast('Invalid JSON in a field', 'error'); return; }
+  try {
+    const d = await apiPut('/api/projects/' + encodeURIComponent(_editingProject), body);
+    if (d.ok) { toast('Project updated', 'success'); closeModal(); refresh(); }
+    else toast(d.detail || 'Failed', 'error');
+  } catch (e) { toast(e.message, 'error'); }
 }
 
 async function deleteProject(name) {
