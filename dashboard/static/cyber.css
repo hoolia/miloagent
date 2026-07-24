@@ -367,6 +367,11 @@ select.form-input{cursor:pointer}
 .ep-add{margin-top:2px;font-size:12px;padding:6px 12px}
 .ep-rm{padding:8px 12px;line-height:1;align-self:center}
 
+/* ── Prompt editor ── */
+.prompt-cols{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+@media(max-width:900px){.prompt-cols{grid-template-columns:1fr}}
+.ovr-badge{font-size:10px;font-weight:700;color:var(--accent);border:1px solid var(--accent);border-radius:6px;padding:1px 6px;margin-left:6px;text-transform:uppercase;letter-spacing:.5px}
+
 /* ── Toast Stack ── */
 .toast-container{position:fixed;bottom:24px;right:24px;z-index:300;display:flex;flex-direction:column-reverse;gap:8px}
 .toast{background:var(--glass);border:1px solid var(--border);border-radius:10px;padding:12px 20px;font-family:var(--font-label);font-size:13px;font-weight:500;backdrop-filter:blur(16px);transform:translateX(120%);opacity:0;transition:all .3s var(--ease);display:flex;align-items:center;gap:10px;max-width:380px;box-shadow:0 4px 24px rgba(0,0,0,.5);position:relative;overflow:hidden}

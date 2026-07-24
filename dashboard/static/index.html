@@ -10,7 +10,7 @@
 <link rel="apple-touch-icon" href="/static/miloagent.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link rel="stylesheet" href="/static/cyber.css?v=3">
+<link rel="stylesheet" href="/static/cyber.css?v=4">
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
 </head>
 <body>
@@ -81,6 +81,7 @@
     <div class="nav-tab" data-tab="communities" onclick="switchTab('communities')"><span class="tab-icon">&#9673;</span>Communities</div>
     <div class="nav-tab" data-tab="config" onclick="switchTab('config')"><span class="tab-icon">&#9881;</span>Config<span class="tab-badge cpu-badge" id="tabCpuBadge"></span></div>
     <div class="nav-tab" data-tab="queue" onclick="switchTab('queue')"><span class="tab-icon">&#9998;</span>Queue<span class="tab-badge err-badge" id="tabQueueBadge" style="display:none"></span></div>
+    <div class="nav-tab" data-tab="prompts" onclick="switchTab('prompts')"><span class="tab-icon">&#9776;</span>Prompts</div>
   </div>
 
   <!-- Global Status Bar -->
@@ -393,6 +394,56 @@
     <div id="queueList"></div>
   </div>
 
+  <div id="tab-prompts" class="tab-content">
+    <div class="card full" style="margin-bottom:16px">
+      <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px">
+        <h2 style="margin:0">&#9776; Prompt Editor</h2>
+        <div class="form-group" style="margin:0;min-width:220px">
+          <label>Project</label>
+          <select class="form-input" id="promptProject" onchange="loadPromptsTab()"></select>
+        </div>
+      </div>
+      <p style="color:var(--text3);font-size:12px;margin:8px 0 0">
+        Edits are stored per-project and apply live to the next generation. Revert restores the built-in default.
+      </p>
+    </div>
+
+    <div class="prompt-cols">
+      <div class="card">
+        <h3 style="margin-top:0">Templates</h3>
+        <div class="form-group">
+          <label>Template</label>
+          <select class="form-input" id="promptTemplate" onchange="loadPromptTemplate()"></select>
+        </div>
+        <div class="form-group">
+          <label>Prompt text <span id="promptOverrideBadge" class="ovr-badge" style="display:none">overridden</span></label>
+          <textarea class="form-input" id="promptText" rows="16" spellcheck="false" style="font-family:var(--font-data);font-size:12px"></textarea>
+        </div>
+        <div id="promptPlaceholders" style="color:var(--text3);font-size:11px;margin-bottom:10px"></div>
+        <div class="modal-actions" style="margin-top:0">
+          <button class="btn" onclick="revertPromptTemplate()">Revert to default</button>
+          <button class="btn primary" onclick="savePromptTemplate()">Save</button>
+        </div>
+      </div>
+
+      <div class="card">
+        <h3 style="margin-top:0">Personas</h3>
+        <div class="form-group">
+          <label>Persona</label>
+          <select class="form-input" id="personaSelect" onchange="loadPersona()"></select>
+        </div>
+        <div class="form-group">
+          <label>Persona (YAML) <span id="personaOverrideBadge" class="ovr-badge" style="display:none">overridden</span></label>
+          <textarea class="form-input" id="personaText" rows="18" spellcheck="false" style="font-family:var(--font-data);font-size:12px"></textarea>
+        </div>
+        <div class="modal-actions" style="margin-top:0">
+          <button class="btn" onclick="revertPersona()">Revert to default</button>
+          <button class="btn primary" onclick="savePersona()">Save</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
 </div>
 
 <!-- ═══════ MODALS ═══════ -->
@@ -494,6 +545,6 @@
 <!-- Toast Container -->
 <div id="toastContainer" class="toast-container"></div>
 
-<script src="/static/app.js?v=7"></script>
+<script src="/static/app.js?v=8"></script>
 </body>
 </html>
