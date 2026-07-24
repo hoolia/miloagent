@@ -222,6 +222,7 @@ function switchTab(name) {
   if (navTabs) navTabs.classList.remove('open');
   const hamburger = document.querySelector('.hamburger');
   if (hamburger) hamburger.classList.remove('open');
+  if (name === 'prompts') loadPromptsTab();
   refresh();
 }
 
@@ -1618,6 +1619,118 @@ async function submitEditProject() {
 async function deleteProject(name) {
   if (!confirm(`Delete project "${name}"?`)) return;
   try { const d=await apiDelete('/api/projects/'+encodeURIComponent(name)); if(d.ok){toast('Deleted','success');refresh()}else toast(d.detail||'Failed','error'); } catch(e){toast(e.message,'error')}
+}
+
+// ── Prompt & persona editor ───────────────────────────────
+async function loadPromptsTab() {
+  const projSel = document.getElementById('promptProject');
+  if (!projSel) return;
+  if (!projSel.options.length) {
+    try {
+      const projs = (await api('/api/projects')) || [];
+      projSel.innerHTML = projs.map(p => `<option value="${esc(p.name)}">${esc(p.name)}</option>`).join('');
+    } catch (e) { projSel.innerHTML = ''; }
+  }
+  const project = projSel.value;
+  await _loadTemplateList(project);
+  await _loadPersonaList(project);
+}
+
+function _optRow(t) { return `<option value="${esc(t.name)}">${t.has_override ? '● ' : ''}${esc(t.name)}</option>`; }
+
+async function _loadTemplateList(project) {
+  const sel = document.getElementById('promptTemplate');
+  try {
+    const list = (await api('/api/prompts?project=' + encodeURIComponent(project))) || [];
+    const cur = sel.value;
+    sel.innerHTML = list.map(_optRow).join('');
+    if (cur && list.some(t => t.name === cur)) sel.value = cur;
+    await loadPromptTemplate();
+  } catch (e) { toast('Failed to load templates', 'error'); }
+}
+
+async function loadPromptTemplate() {
+  const project = document.getElementById('promptProject').value;
+  const name = document.getElementById('promptTemplate').value;
+  if (!name) return;
+  try {
+    const d = await api(`/api/prompts/${encodeURIComponent(name)}?project=${encodeURIComponent(project)}`);
+    document.getElementById('promptText').value = d.effective || '';
+    const ph = document.getElementById('promptPlaceholders');
+    ph.textContent = (d.placeholders && d.placeholders.length)
+      ? 'Placeholders you can use: ' + d.placeholders.map(p => '{' + p + '}').join('  ')
+      : 'No placeholders';
+    document.getElementById('promptOverrideBadge').style.display = d.override ? '' : 'none';
+  } catch (e) { toast('Failed to load template', 'error'); }
+}
+
+async function savePromptTemplate() {
+  const project = document.getElementById('promptProject').value;
+  const name = document.getElementById('promptTemplate').value;
+  const content = document.getElementById('promptText').value;
+  if (!project) { toast('Select a project', 'error'); return; }
+  try {
+    const d = await apiPut(`/api/prompts/${encodeURIComponent(name)}`, { project, content });
+    if (d.ok) { toast('Prompt saved (live)', 'success'); _loadTemplateList(project); }
+    else toast(d.detail || 'Failed', 'error');
+  } catch (e) { toast(e.message, 'error'); }
+}
+
+async function revertPromptTemplate() {
+  const project = document.getElementById('promptProject').value;
+  const name = document.getElementById('promptTemplate').value;
+  if (!confirm(`Revert "${name}" to the built-in default?`)) return;
+  try {
+    const d = await apiDelete(`/api/prompts/${encodeURIComponent(name)}?project=${encodeURIComponent(project)}`);
+    if (d.ok) { toast('Reverted to default', 'success'); _loadTemplateList(project); }
+    else toast(d.detail || 'Failed', 'error');
+  } catch (e) { toast(e.message, 'error'); }
+}
+
+async function _loadPersonaList(project) {
+  const sel = document.getElementById('personaSelect');
+  try {
+    const list = (await api('/api/personas?project=' + encodeURIComponent(project))) || [];
+    const cur = sel.value;
+    sel.innerHTML = list.map(_optRow).join('');
+    if (cur && list.some(t => t.name === cur)) sel.value = cur;
+    await loadPersona();
+  } catch (e) { /* personas optional */ }
+}
+
+async function loadPersona() {
+  const project = document.getElementById('promptProject').value;
+  const name = document.getElementById('personaSelect').value;
+  const ta = document.getElementById('personaText');
+  if (!name) { ta.value = ''; return; }
+  try {
+    const d = await api(`/api/personas/${encodeURIComponent(name)}?project=${encodeURIComponent(project)}`);
+    ta.value = d.effective || '';
+    document.getElementById('personaOverrideBadge').style.display = d.override ? '' : 'none';
+  } catch (e) { toast('Failed to load persona', 'error'); }
+}
+
+async function savePersona() {
+  const project = document.getElementById('promptProject').value;
+  const name = document.getElementById('personaSelect').value;
+  const content = document.getElementById('personaText').value;
+  if (!project) { toast('Select a project', 'error'); return; }
+  try {
+    const d = await apiPut(`/api/personas/${encodeURIComponent(name)}`, { project, content });
+    if (d.ok) { toast('Persona saved (live)', 'success'); _loadPersonaList(project); }
+    else toast(d.detail || 'Failed', 'error');
+  } catch (e) { toast(e.message, 'error'); }
+}
+
+async function revertPersona() {
+  const project = document.getElementById('promptProject').value;
+  const name = document.getElementById('personaSelect').value;
+  if (!confirm(`Revert persona "${name}" to the config default?`)) return;
+  try {
+    const d = await apiDelete(`/api/personas/${encodeURIComponent(name)}?project=${encodeURIComponent(project)}`);
+    if (d.ok) { toast('Reverted to default', 'success'); _loadPersonaList(project); }
+    else toast(d.detail || 'Failed', 'error');
+  } catch (e) { toast(e.message, 'error'); }
 }
 
 // ══════════════════════════════════════════════════════════════

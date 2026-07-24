@@ -1,11 +1,13 @@
 """Content generation using LLM + prompt templates."""
 
 import os
+import json
 import random
 import logging
 from typing import Dict, List, Optional
 
 from core.llm_provider import LLMProvider
+from core.prompt_utils import placeholders_subset
 
 logger = logging.getLogger(__name__)
 
@@ -162,6 +164,23 @@ class ContentGenerator:
                     self.templates[name] = f.read().strip()
                 logger.debug(f"Loaded prompt template: {name}")
 
+    def _get_template(self, name: str, project: str = "", fallback: str = "") -> str:
+        """Return the per-project DB override for a template, else the file default.
+
+        The override is used only if its placeholders are a subset of the file
+        default's, so `.format(**kwargs)` at the call site can never KeyError on a
+        bad edit (defense-in-depth on top of save-time validation).
+        """
+        default = self.templates.get(name, fallback)
+        if self._db and project:
+            try:
+                override = self._db.get_evolved_prompt(project, name)
+                if override and placeholders_subset(override, default):
+                    return override
+            except Exception:
+                pass
+        return default
+
     def _should_be_promotional(self, ratio: Optional[float] = None) -> bool:
         """Returns True with probability (1 - organic_ratio), i.e. ~20%."""
         r = ratio if ratio is not None else (1.0 - self.organic_ratio)
@@ -284,7 +303,7 @@ class ContentGenerator:
 
     # ── Expert Persona Context ───────────────────────────────────────
 
-    def _get_expert_context(self, persona_name: str) -> tuple:
+    def _get_expert_context(self, persona_name: str, project: str = "") -> tuple:
         """Get persona instruction and domain knowledge for an expert persona.
 
         Returns (persona_instruction: str, domain_knowledge: str)
@@ -293,6 +312,16 @@ class ContentGenerator:
             self.load_expert_personas()
 
         persona = self.EXPERT_PERSONAS.get(persona_name, {})
+        # Per-project persona override from the dashboard, merged over the default.
+        if self._db and project:
+            try:
+                raw = self._db.get_persona_override(project, persona_name)
+                if raw:
+                    ov = json.loads(raw)
+                    if isinstance(ov, dict):
+                        persona = {**persona, **ov}
+            except Exception:
+                pass
         if not persona:
             return ("Be helpful and knowledgeable.", "")
 
@@ -536,7 +565,7 @@ class ContentGenerator:
                 research_context, subreddit, post_title
             )
 
-        template = self.templates.get("reddit_comment", "")
+        template = self._get_template("reddit_comment", proj_name)
         if not template:
             template = (
                 "Write a helpful Reddit comment for a post in r/{subreddit}.\n"
@@ -561,7 +590,7 @@ class ContentGenerator:
         )
 
         # Build enriched system prompt from reddit_system template
-        sys_template = self.templates.get("reddit_system", "")
+        sys_template = self._get_template("reddit_system", proj_name)
         if sys_template and account:
             username = account.get("username", "anonymous")
             persona_desc = persona.get("persona", "helpful casual user")
@@ -634,7 +663,8 @@ class ContentGenerator:
             project, is_promotional
         )
 
-        template = self.templates.get("reddit_post", "")
+        proj_name = project.get("project", {}).get("name", "")
+        template = self._get_template("reddit_post", proj_name)
         if not template:
             template = (
                 "Write a valuable post for r/{subreddit} about {topic}.\n"
@@ -691,7 +721,8 @@ class ContentGenerator:
             project, is_promotional
         )
 
-        template = self.templates.get("twitter_tweet", "")
+        proj_name = project.get("project", {}).get("name", "")
+        template = self._get_template("twitter_tweet", proj_name)
         if not template:
             template = (
                 "Write a tweet about {topic}.\n"
@@ -763,9 +794,10 @@ class ContentGenerator:
                 enriched_tweet = f"{tweet_text}\n[Author: {', '.join(parts)}]"
 
         # Get expert context
-        persona_instruction, domain_knowledge = self._get_expert_context(persona)
+        proj_name = project.get("project", {}).get("name", "")
+        persona_instruction, domain_knowledge = self._get_expert_context(persona, proj_name)
 
-        template = self.templates.get("twitter_reply", "")
+        template = self._get_template("twitter_reply", proj_name)
         if not template:
             template = (
                 "Reply to @{tweet_author}'s tweet:\n"
@@ -821,9 +853,10 @@ class ContentGenerator:
         post_type_instruction = self._get_post_type_instruction(post_type)
 
         # Get expert context
-        persona_instruction, domain_knowledge = self._get_expert_context(persona)
+        proj_name = project.get("project", {}).get("name", "")
+        persona_instruction, domain_knowledge = self._get_expert_context(persona, proj_name)
 
-        template = self.templates.get("telegram_reply", "")
+        template = self._get_template("telegram_reply", proj_name)
         if not template:
             template = (
                 "Reply to this Telegram message in {group_name}:\n"
@@ -937,15 +970,9 @@ class ContentGenerator:
         template_name = f"reddit_user_{post_type}"
         template = None
         proj_name = proj.get("name", "")
-        if self._db and proj_name:
-            try:
-                template = self._db.get_evolved_prompt(proj_name, template_name)
-            except Exception:
-                pass
+        template = self._get_template(template_name, proj_name)
         if not template:
-            template = self.templates.get(template_name, "")
-        if not template:
-            template = self.templates.get("reddit_post", "")
+            template = self._get_template("reddit_post", proj_name)
         if not template:
             template = (
                 "Write a {post_type} post for r/{subreddit} about {topic}.\n"
@@ -1017,12 +1044,13 @@ class ContentGenerator:
 
         proj = project.get("project", project)
         topic = proj.get("description", "tech")
+        proj_name = proj.get("name", "")
 
         reddit_context = ""
         if reddit_url:
             reddit_context = f"Link to include: {reddit_url}"
 
-        template = self.templates.get("twitter_user_post", "")
+        template = self._get_template("twitter_user_post", proj_name)
         if not template:
             template = (
                 "Write a {tweet_type} tweet about {topic}.\n"

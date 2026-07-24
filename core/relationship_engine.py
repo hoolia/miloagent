@@ -54,6 +54,14 @@ class RelationshipEngine:
                 self._prompts[name] = ""
         return self._prompts[name]
 
+    def _dm_template(self, name: str, filename: str, project_name: str) -> str:
+        """Prefer the per-project DB override for a DM template, else the file."""
+        if self.content_gen:
+            override = self.content_gen._get_template(name, project_name)
+            if override:
+                return override
+        return self._load_prompt(filename)
+
     # ── Target Identification ────────────────────────────────────────
 
     def identify_targets(
@@ -310,19 +318,20 @@ class RelationshipEngine:
                 pass
 
         # Choose prompt template
+        proj_name = project.get("project", {}).get("name", "")
         promo_instruction = ""
         if platform == "reddit":
             if not history or stage == "warm":
-                template = self._load_prompt("reddit_dm_first.txt")
+                template = self._dm_template("reddit_dm_first", "reddit_dm_first.txt", proj_name)
             else:
-                template = self._load_prompt("reddit_dm_followup.txt")
+                template = self._dm_template("reddit_dm_followup", "reddit_dm_followup.txt", proj_name)
                 if stage == "advocate":
                     promo_instruction = (
                         "You can casually mention the product if it fits "
                         "naturally in the conversation. Don't force it."
                     )
         else:
-            template = self._load_prompt("twitter_dm.txt")
+            template = self._dm_template("twitter_dm", "twitter_dm.txt", proj_name)
             if stage == "advocate":
                 promo_instruction = (
                     "You can casually mention the product if it fits "

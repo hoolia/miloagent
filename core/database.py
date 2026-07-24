@@ -684,6 +684,57 @@ class Database:
             (project, template_name),
         )
 
+    def set_prompt_override(self, project: str, template_name: str, content: str):
+        """Replace the active evolved prompt for a template (dashboard edit)."""
+        self._execute_write(
+            """DELETE FROM knowledge_base
+               WHERE project = ? AND category = 'evolved_prompt' AND topic = ?""",
+            (project, template_name),
+        )
+        self.log_knowledge(
+            project=project,
+            category="evolved_prompt",
+            topic=template_name,
+            content=content,
+            source="dashboard",
+            relevance_score=100.0,
+        )
+
+    def get_persona_override(self, project: str, persona_name: str) -> Optional[str]:
+        """Get the active persona override (JSON string) for a project, if any."""
+        row = self.conn.execute(
+            """SELECT content FROM knowledge_base
+               WHERE project = ? AND category = 'persona_override' AND topic = ?
+               AND (expires_at IS NULL OR expires_at > datetime('now'))
+               ORDER BY relevance_score DESC, timestamp DESC LIMIT 1""",
+            (project, persona_name),
+        ).fetchone()
+        return row["content"] if row else None
+
+    def set_persona_override(self, project: str, persona_name: str, content: str):
+        """Replace the active persona override (JSON string) for a project."""
+        self._execute_write(
+            """DELETE FROM knowledge_base
+               WHERE project = ? AND category = 'persona_override' AND topic = ?""",
+            (project, persona_name),
+        )
+        self.log_knowledge(
+            project=project,
+            category="persona_override",
+            topic=persona_name,
+            content=content,
+            source="dashboard",
+            relevance_score=100.0,
+        )
+
+    def revert_persona_override(self, project: str, persona_name: str):
+        """Remove the persona override, reverting to the config default."""
+        self._execute_write(
+            """DELETE FROM knowledge_base
+               WHERE project = ? AND category = 'persona_override' AND topic = ?""",
+            (project, persona_name),
+        )
+
     def get_recent_actions(
         self,
         hours: int = 24,

@@ -646,6 +646,158 @@ class WebDashboard:
                 raise HTTPException(status_code=404, detail="Project not found")
             return {"ok": True}
 
+        # ── Prompt templates (per-project DB overrides) ────
+        @app.get("/api/prompts")
+        async def list_prompts(project: str = "", _=Depends(self._verify_token)):
+            cg = getattr(self.orch, "content_gen", None)
+            if not cg:
+                return []
+            out = []
+            for name in sorted(cg.templates.keys()):
+                has = False
+                if project:
+                    try:
+                        has = bool(self.orch.db.get_evolved_prompt(project, name))
+                    except Exception:
+                        has = False
+                out.append({"name": name, "has_override": has})
+            return out
+
+        @app.get("/api/prompts/{name}")
+        async def get_prompt(name: str, project: str = "", _=Depends(self._verify_token)):
+            from core.prompt_utils import extract_placeholders
+            cg = getattr(self.orch, "content_gen", None)
+            if not cg or name not in cg.templates:
+                raise HTTPException(status_code=404, detail="Template not found")
+            default = cg.templates.get(name, "")
+            override = None
+            if project:
+                try:
+                    override = self.orch.db.get_evolved_prompt(project, name)
+                except Exception:
+                    override = None
+            try:
+                placeholders = sorted(extract_placeholders(default))
+            except Exception:
+                placeholders = []
+            return {
+                "name": name, "default": default, "override": override,
+                "effective": override or default, "placeholders": placeholders,
+            }
+
+        @app.put("/api/prompts/{name}")
+        async def put_prompt(name: str, body: dict = Body(...), _=Depends(self._verify_token)):
+            from core.prompt_utils import extract_placeholders
+            cg = getattr(self.orch, "content_gen", None)
+            if not cg or name not in cg.templates:
+                raise HTTPException(status_code=404, detail="Template not found")
+            project = (body or {}).get("project", "")
+            content = (body or {}).get("content", "")
+            if not project:
+                raise HTTPException(status_code=400, detail="project is required")
+            if not isinstance(content, str) or not content.strip():
+                raise HTTPException(status_code=400, detail="content is required")
+            default = cg.templates.get(name, "")
+            try:
+                allowed = extract_placeholders(default)
+                used = extract_placeholders(content)
+            except ValueError as e:
+                raise HTTPException(status_code=400, detail=f"Invalid template: {e}")
+            unknown = used - allowed
+            if unknown:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Unknown placeholders: {', '.join(sorted(unknown))}. "
+                           f"Allowed: {', '.join(sorted(allowed))}",
+                )
+            try:
+                self.orch.db.set_prompt_override(project, name, content)
+            except Exception as e:
+                raise HTTPException(status_code=500, detail=str(e))
+            return {"ok": True}
+
+        @app.delete("/api/prompts/{name}")
+        async def revert_prompt(name: str, project: str = "", _=Depends(self._verify_token)):
+            if not project:
+                raise HTTPException(status_code=400, detail="project is required")
+            try:
+                self.orch.db.revert_prompt_evolution(project, name)
+            except Exception as e:
+                raise HTTPException(status_code=500, detail=str(e))
+            return {"ok": True}
+
+        # ── Personas (per-project DB overrides) ────────────
+        @app.get("/api/personas")
+        async def list_personas(project: str = "", _=Depends(self._verify_token)):
+            cg = getattr(self.orch, "content_gen", None)
+            personas = (cg.EXPERT_PERSONAS or {}) if cg else {}
+            out = []
+            for name in sorted(personas.keys()):
+                has = False
+                if project:
+                    try:
+                        has = bool(self.orch.db.get_persona_override(project, name))
+                    except Exception:
+                        has = False
+                out.append({"name": name, "has_override": has})
+            return out
+
+        @app.get("/api/personas/{name}")
+        async def get_persona(name: str, project: str = "", _=Depends(self._verify_token)):
+            import yaml
+            cg = getattr(self.orch, "content_gen", None)
+            personas = (cg.EXPERT_PERSONAS or {}) if cg else {}
+            if name not in personas:
+                raise HTTPException(status_code=404, detail="Persona not found")
+            default_yaml = yaml.dump(
+                personas.get(name, {}), default_flow_style=False,
+                sort_keys=False, allow_unicode=True,
+            )
+            override_yaml = None
+            if project:
+                try:
+                    raw = self.orch.db.get_persona_override(project, name)
+                    if raw:
+                        override_yaml = yaml.dump(
+                            json.loads(raw), default_flow_style=False,
+                            sort_keys=False, allow_unicode=True,
+                        )
+                except Exception:
+                    override_yaml = None
+            return {
+                "name": name, "default": default_yaml, "override": override_yaml,
+                "effective": override_yaml or default_yaml,
+            }
+
+        @app.put("/api/personas/{name}")
+        async def put_persona(name: str, body: dict = Body(...), _=Depends(self._verify_token)):
+            import yaml
+            project = (body or {}).get("project", "")
+            content = (body or {}).get("content", "")
+            if not project:
+                raise HTTPException(status_code=400, detail="project is required")
+            try:
+                parsed = yaml.safe_load(content)
+            except Exception as e:
+                raise HTTPException(status_code=400, detail=f"Invalid YAML: {e}")
+            if not isinstance(parsed, dict):
+                raise HTTPException(status_code=400, detail="Persona must be a YAML mapping")
+            try:
+                self.orch.db.set_persona_override(project, name, json.dumps(parsed))
+            except Exception as e:
+                raise HTTPException(status_code=500, detail=str(e))
+            return {"ok": True}
+
+        @app.delete("/api/personas/{name}")
+        async def revert_persona(name: str, project: str = "", _=Depends(self._verify_token)):
+            if not project:
+                raise HTTPException(status_code=400, detail="project is required")
+            try:
+                self.orch.db.revert_persona_override(project, name)
+            except Exception as e:
+                raise HTTPException(status_code=500, detail=str(e))
+            return {"ok": True}
+
         # ── POST /api/accounts ─────────────────────────────
         @app.post("/api/accounts")
         async def create_account(body: AccountCreate, _=Depends(self._verify_token)):
