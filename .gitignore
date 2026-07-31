@@ -21,7 +21,10 @@ env/
 .idea/
 *.swp
 *.swo
-.claude/
+
+# ── Claude Code (track committed skills, ignore local settings) ──
+.claude/*
+!.claude/skills/
 
 # ── Runtime Data (NEVER commit these) ────────────────────
 data/miloagent.db
@@ -54,7 +57,7 @@ projects/*.yaml
 *.local.yaml
 
 # ── Old directory structures (purged from history) ────────
-miloagent/
+/miloagent/
 growthbot/config/
 growthbot/projects/
 
