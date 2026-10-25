@@ -1,0 +1,9 @@
+# This project is on the grncloud/cicd hub: Claude and Codex reviews guided by
+# REVIEW.md, SonarQube, the confidence gate and the branch sync run there.
+include:
+  - project: grncloud/cicd
+    ref: v1.1.0
+    file: templates/hub.gitlab-ci.yml
+  - project: grncloud/cicd
+    ref: v1.1.0
+    file: templates/betterleaks.gitlab-ci.yml
