@@ -53,6 +53,26 @@ probes:
 extraContainers: []
 extraVolumes: []
 
+# Prometheus Operator monitoring: a metrics Service, a ServiceMonitor and the alert rules
+# of docs/alerts.md. The miloagent_* series come from an exporter container in the pod
+# with a port named "metrics" (add it with extraContainers); without one only the
+# kube-state-metrics and kubelet alerts work. Needs the monitoring.coreos.com CRDs.
+monitoring:
+  enabled: false
+  port: 9420
+  interval: 60s
+  rules:
+    enabled: true
+    # Extra labels on every alert, for example to route them in Alertmanager
+    labels: {}
+    runbookBaseUrl: https://github.com/hoolia/miloagent/blob/main/docs/alerts.md
+    # MiloAgentNoRecentScan: a scan within maxAgeHours is due between fromHour and toHour
+    # (UTC, inside settings bot.active_hours)
+    noRecentScan:
+      maxAgeHours: 3
+      fromHour: 11
+      toHour: 23
+
 persistence:
   # null → use the cluster's default StorageClass. Override per-environment (e.g. an RWO
   # block class) in your downstream values. RWO is required (single-writer SQLite + Recreate).
@@ -93,10 +113,25 @@ secrets:
   telegram: ""
   telegram_user_accounts: ""
 
-# Scalar env (envFrom secret).
+# Scalar env (envFrom secret). An empty MILO_WEB_PASS is left out, for existingSecrets.env.
 env:
   MILO_WEB_USER: admin
   MILO_WEB_PASS: changeme-set-a-strong-password
   MILO_WEB_TOKEN: ""
   TELEGRAM_BOT_TOKEN: ""
   TZ: UTC
+
+# Secrets that already exist in the namespace (made by hand, External Secrets or Sealed
+# Secrets), so credentials stay out of the values. A change to them does not restart the
+# pod; run `kubectl rollout restart` after one.
+existingSecrets:
+  # Secret whose keys become environment variables (MILO_WEB_PASS, MILO_WEB_TOKEN,
+  # TELEGRAM_BOT_TOKEN). It comes after env, so its keys win.
+  env: ""
+  # Secret with whole credential files: key <name>.yaml is mounted at
+  # /app/config/<name>.yaml for every <name> in fileKeys, in place of secrets.<name>.
+  files: ""
+  fileKeys: []   # for example [llm, reddit_accounts]
+
+# Extra objects rendered as given (no templating), for example an ExternalSecret.
+extraObjects: []

@@ -1,0 +1,267 @@
+# promtool unit tests of deploy/templates/prometheusrule.yaml, rendered with the chart
+# defaults in namespace miloagent. Run: tests/chart/run.sh (helm, promtool, PyYAML).
+rule_files:
+- rules.yaml
+evaluation_interval: 1m
+tests:
+- name: data volume not writable
+  interval: 1m
+  input_series:
+  - series: 'miloagent_volume_writable{namespace="miloagent", pod="miloagent-1", job="miloagent-metrics"}'
+    values: '1 1 0x10'
+  - series: 'miloagent_volume_readonly{namespace="miloagent", pod="miloagent-1", job="miloagent-metrics"}'
+    values: '0x12'
+  alert_rule_test:
+  - eval_time: 5m
+    alertname: MiloAgentDataVolumeNotWritable
+    exp_alerts: []
+  - eval_time: 8m
+    alertname: MiloAgentDataVolumeNotWritable
+    exp_alerts:
+    - exp_labels: {severity: critical, namespace: miloagent, pod: miloagent-1}
+      exp_annotations:
+        summary: 'The MiloAgent data volume takes no writes (miloagent-1)'
+        description: 'The exporter cannot write and fsync its probe file on PVC miloagent-data, or the file system is read-only. Every SQLite write of MiloAgent fails while the pod stays Ready. A container restart keeps the mount; snapshot the PVC, then recreate the pod.'
+        runbook_url: https://github.com/hoolia/miloagent/blob/main/docs/alerts.md#miloagentdatavolumenotwritable
+
+- name: read-only file system alone
+  interval: 1m
+  input_series:
+  - series: 'miloagent_volume_writable{namespace="miloagent", pod="miloagent-1", job="miloagent-metrics"}'
+    values: '1x12'
+  - series: 'miloagent_volume_readonly{namespace="miloagent", pod="miloagent-1", job="miloagent-metrics"}'
+    values: '0 0 1x10'
+  alert_rule_test:
+  - eval_time: 8m
+    alertname: MiloAgentDataVolumeNotWritable
+    exp_alerts:
+    - exp_labels: {severity: critical, namespace: miloagent, pod: miloagent-1}
+      exp_annotations:
+        summary: 'The MiloAgent data volume takes no writes (miloagent-1)'
+        description: 'The exporter cannot write and fsync its probe file on PVC miloagent-data, or the file system is read-only. Every SQLite write of MiloAgent fails while the pod stays Ready. A container restart keeps the mount; snapshot the PVC, then recreate the pod.'
+        runbook_url: https://github.com/hoolia/miloagent/blob/main/docs/alerts.md#miloagentdatavolumenotwritable
+
+- name: database write errors
+  interval: 1m
+  input_series:
+  - series: 'miloagent_log_db_errors_total{namespace="miloagent", pod="miloagent-1", job="miloagent-metrics", kind="db_io"}'
+    values: '0 0 0 1x12'
+  - series: 'miloagent_log_db_errors_total{namespace="miloagent", pod="miloagent-1", job="miloagent-metrics", kind="db_locked"}'
+    values: '0 5 10 15 20 25 30 35 40 45 50 55 60 65 70'
+  alert_rule_test:
+  - eval_time: 2m
+    alertname: MiloAgentDatabaseWriteErrors
+    exp_alerts: []
+  - eval_time: 9m
+    alertname: MiloAgentDatabaseWriteErrors
+    exp_alerts:
+    - exp_labels: {severity: critical, namespace: miloagent, pod: miloagent-1}
+      exp_annotations:
+        summary: 'MiloAgent logs SQLite write errors (miloagent-1)'
+        description: 'MiloAgent logged disk I/O, read-only, malformed or full database errors in the last 30 minutes. Findings, actions and account health are not stored.'
+        runbook_url: https://github.com/hoolia/miloagent/blob/main/docs/alerts.md#miloagentdatabasewriteerrors
+
+- name: locked database alone does not alert
+  interval: 1m
+  input_series:
+  - series: 'miloagent_log_db_errors_total{namespace="miloagent", pod="miloagent-1", job="miloagent-metrics", kind="db_locked"}'
+    values: '0+5x15'
+  alert_rule_test:
+  - eval_time: 15m
+    alertname: MiloAgentDatabaseWriteErrors
+    exp_alerts: []
+
+- name: scheduled job failing
+  interval: 1m
+  input_series:
+  - series: 'miloagent_scheduler_job_runs_total{namespace="miloagent", pod="miloagent-1", job="miloagent-metrics", task="_health_check", result="error"}'
+    values: '0 0 1x20'
+  - series: 'miloagent_scheduler_job_runs_total{namespace="miloagent", pod="miloagent-1", job="miloagent-metrics", task="_scan_all_safe", result="success"}'
+    values: '0+1x22'
+  alert_rule_test:
+  - eval_time: 5m
+    alertname: MiloAgentScheduledJobFailing
+    exp_alerts: []
+  - eval_time: 8m
+    alertname: MiloAgentScheduledJobFailing
+    exp_alerts:
+    - exp_labels: {severity: warning, namespace: miloagent, pod: miloagent-1, task: _health_check}
+      exp_annotations:
+        summary: 'MiloAgent job _health_check raised an exception'
+        description: 'The scheduled job _health_check raised an exception in the last 2 hours. The traceback follows the line "raised an exception" in the MiloAgent log.'
+        runbook_url: https://github.com/hoolia/miloagent/blob/main/docs/alerts.md#miloagentscheduledjobfailing
+
+- name: no recent scan inside active hours only
+  interval: 5m
+  input_series:
+  - series: 'miloagent_last_scan_complete_timestamp_seconds{namespace="miloagent", pod="miloagent-1", job="miloagent-metrics"}'
+    values: '0x300'
+  alert_rule_test:
+  - eval_time: 10h55m
+    alertname: MiloAgentNoRecentScan
+    exp_alerts: []
+  - eval_time: 11h10m
+    alertname: MiloAgentNoRecentScan
+    exp_alerts: []
+  - eval_time: 12h
+    alertname: MiloAgentNoRecentScan
+    exp_alerts:
+    - exp_labels: {severity: warning, namespace: miloagent, pod: miloagent-1}
+      exp_annotations:
+        summary: 'MiloAgent completed no scan for 12h 0m 0s'
+        description: 'No "Scan cycle complete" in the MiloAgent log for more than 3 hours inside its active hours. The scheduler or the scan is stuck, or the bot is paused.'
+        runbook_url: https://github.com/hoolia/miloagent/blob/main/docs/alerts.md#miloagentnorecentscan
+  - eval_time: 23h30m
+    alertname: MiloAgentNoRecentScan
+    exp_alerts: []
+
+- name: account health stale
+  interval: 5m
+  input_series:
+  - series: 'miloagent_account_health_timestamp_seconds{namespace="miloagent", pod="miloagent-1", job="miloagent-metrics", platform="reddit", account="a", status="healthy"}'
+    values: '0x50'
+  alert_rule_test:
+  - eval_time: 3h
+    alertname: MiloAgentAccountHealthStale
+    exp_alerts: []
+  - eval_time: 3h20m
+    alertname: MiloAgentAccountHealthStale
+    exp_alerts:
+    - exp_labels: {severity: warning, namespace: miloagent, pod: miloagent-1}
+      exp_annotations:
+        summary: 'MiloAgent wrote no account health for 3h 20m 0s'
+        description: 'The hourly health_check job has not stored an account health row for more than 3 hours: it crashes, the database takes no writes, or the bot is paused.'
+        runbook_url: https://github.com/hoolia/miloagent/blob/main/docs/alerts.md#miloagentaccounthealthstale
+
+- name: not ready
+  interval: 1m
+  input_series:
+  - series: 'kube_deployment_status_replicas_available{namespace="miloagent", deployment="miloagent"}'
+    values: '1 0x20'
+  alert_rule_test:
+  - eval_time: 10m
+    alertname: MiloAgentNotReady
+    exp_alerts: []
+  - eval_time: 17m
+    alertname: MiloAgentNotReady
+    exp_alerts:
+    - exp_labels: {severity: warning, namespace: miloagent, deployment: miloagent}
+      exp_annotations:
+        summary: 'MiloAgent has no ready pod'
+        description: 'Deployment miloagent has had no available replica for 15 minutes: the dashboard is down and no scan runs.'
+        runbook_url: https://github.com/hoolia/miloagent/blob/main/docs/alerts.md#miloagentnotready
+
+- name: restarting, bridge pod excluded
+  interval: 1m
+  input_series:
+  - series: 'kube_pod_container_status_restarts_total{namespace="miloagent", pod="miloagent-55866fdb6b-6bg9x", container="miloagent"}'
+    values: '0 0 0 1 2 3 4 5 6 7 8 9 10 11 12'
+  - series: 'kube_pod_container_status_restarts_total{namespace="miloagent", pod="miloagent-bridge-796885778d-vzcxm", container="server"}'
+    values: '0 0 0 1 2 3 4 5 6 7 8 9 10 11 12'
+  alert_rule_test:
+  - eval_time: 3m
+    alertname: MiloAgentRestarting
+    exp_alerts: []
+  - eval_time: 12m
+    alertname: MiloAgentRestarting
+    exp_alerts:
+    - exp_labels: {severity: warning, namespace: miloagent, pod: miloagent-55866fdb6b-6bg9x, container: miloagent}
+      exp_annotations:
+        summary: 'MiloAgent container miloagent restarted 10 times in an hour'
+        description: 'A liveness probe fails or the process crashes. A liveness probe that checks the data volume fails when the volume or the SQLite database takes no writes.'
+        runbook_url: https://github.com/hoolia/miloagent/blob/main/docs/alerts.md#miloagentrestarting
+
+- name: volume filling up
+  interval: 1m
+  input_series:
+  - series: 'kubelet_volume_stats_used_bytes{namespace="miloagent", persistentvolumeclaim="miloagent-data"}'
+    values: '90x40'
+  - series: 'kubelet_volume_stats_capacity_bytes{namespace="miloagent", persistentvolumeclaim="miloagent-data"}'
+    values: '100x40'
+  alert_rule_test:
+  - eval_time: 20m
+    alertname: MiloAgentVolumeFillingUp
+    exp_alerts: []
+  - eval_time: 31m
+    alertname: MiloAgentVolumeFillingUp
+    exp_alerts:
+    - exp_labels: {severity: warning, namespace: miloagent, persistentvolumeclaim: miloagent-data}
+      exp_annotations:
+        summary: 'PVC miloagent-data is 90% full'
+        description: 'The data volume has been above 85 % for 30 minutes. A full volume stops every SQLite write of MiloAgent.'
+        runbook_url: https://github.com/hoolia/miloagent/blob/main/docs/alerts.md#miloagentvolumefillingup
+
+- name: metrics absent
+  interval: 1m
+  input_series:
+  - series: 'up{namespace="other", job="other"}'
+    values: '1x20'
+  alert_rule_test:
+  - eval_time: 10m
+    alertname: MiloAgentMetricsDown
+    exp_alerts: []
+  - eval_time: 16m
+    alertname: MiloAgentMetricsDown
+    exp_alerts:
+    - exp_labels: {severity: warning, namespace: miloagent, job: miloagent-metrics}
+      exp_annotations:
+        summary: 'Prometheus cannot scrape the MiloAgent exporter'
+        description: 'Without the exporter every other MiloAgent alert except MiloAgentNotReady, MiloAgentRestarting and MiloAgentVolumeFillingUp stays silent.'
+        runbook_url: https://github.com/hoolia/miloagent/blob/main/docs/alerts.md#miloagentmetricsdown
+
+- name: metrics target down
+  interval: 1m
+  input_series:
+  - series: 'up{namespace="miloagent", job="miloagent-metrics", pod="miloagent-1", instance="10.0.0.1:9420"}'
+    values: '1 0x20'
+  alert_rule_test:
+  - eval_time: 10m
+    alertname: MiloAgentMetricsDown
+    exp_alerts: []
+  - eval_time: 17m
+    alertname: MiloAgentMetricsDown
+    exp_alerts:
+    - exp_labels: {severity: warning, namespace: miloagent, job: miloagent-metrics, pod: miloagent-1, instance: "10.0.0.1:9420"}
+      exp_annotations:
+        summary: 'Prometheus cannot scrape the MiloAgent exporter'
+        description: 'Without the exporter every other MiloAgent alert except MiloAgentNotReady, MiloAgentRestarting and MiloAgentVolumeFillingUp stays silent.'
+        runbook_url: https://github.com/hoolia/miloagent/blob/main/docs/alerts.md#miloagentmetricsdown
+
+- name: reddit token expired, then a day passes
+  interval: 1m
+  input_series:
+  - series: 'miloagent_reddit_token_expired_timestamp_seconds{namespace="miloagent", pod="miloagent-1", job="miloagent-metrics", account="u1"}'
+    values: '_x5 300x1500'
+  alert_rule_test:
+  - eval_time: 3m
+    alertname: MiloAgentRedditTokenExpired
+    exp_alerts: []
+  - eval_time: 6m
+    alertname: MiloAgentRedditTokenExpired
+    exp_alerts:
+    - exp_labels: {severity: warning, namespace: miloagent, pod: miloagent-1, account: u1}
+      exp_annotations:
+        summary: 'Reddit token_v2 of u/u1 expired'
+        description: 'MiloAgent cannot post or comment as u/u1; approved drafts fail. Refresh token_v2 in the dashboard accounts page.'
+        runbook_url: https://github.com/hoolia/miloagent/blob/main/docs/alerts.md#miloagentreddittokenexpired
+  - eval_time: 24h10m
+    alertname: MiloAgentRedditTokenExpired
+    exp_alerts: []
+
+- name: reddit blocks subreddits
+  interval: 5m
+  input_series:
+  - series: 'miloagent_reddit_blocked_subreddits{namespace="miloagent", pod="miloagent-1", job="miloagent-metrics"}'
+    values: '7x200'
+  alert_rule_test:
+  - eval_time: 11h
+    alertname: MiloAgentRedditBlocked
+    exp_alerts: []
+  - eval_time: 13h
+    alertname: MiloAgentRedditBlocked
+    exp_alerts:
+    - exp_labels: {severity: info, namespace: miloagent, pod: miloagent-1}
+      exp_annotations:
+        summary: 'Reddit blocks 7 subreddits for MiloAgent'
+        description: 'Reddit answers 403 or 429 for at least 5 subreddits for 12 hours; their scans find nothing. Reddit decides this, MiloAgent skips each for 4 hours.'
+        runbook_url: https://github.com/hoolia/miloagent/blob/main/docs/alerts.md#miloagentredditblocked

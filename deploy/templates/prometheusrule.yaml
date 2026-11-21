@@ -1,0 +1,146 @@
+{{- if and .Values.monitoring.enabled .Values.monitoring.rules.enabled }}
+{{- $ns := .Release.Namespace }}
+{{- $full := include "miloagent.fullname" . }}
+{{- $job := printf "%s-metrics" $full }}
+{{- $url := .Values.monitoring.rules.runbookBaseUrl }}
+{{- $extra := .Values.monitoring.rules.labels }}
+{{- $scan := .Values.monitoring.rules.noRecentScan }}
+# MiloAgent alerts; runbook docs/alerts.md. Metrics: the exporter (miloagent_*),
+# kube-state-metrics and the kubelet.
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: {{ $full }}
+  labels:
+    {{- include "miloagent.metricsLabels" . | nindent 4 }}
+spec:
+  groups:
+  - name: miloagent
+    rules:
+    - alert: MiloAgentDataVolumeNotWritable
+      expr: |
+        max by (namespace, pod) (miloagent_volume_writable{namespace="{{ $ns }}"}) == 0
+        or
+        max by (namespace, pod) (miloagent_volume_readonly{namespace="{{ $ns }}"}) == 1
+      for: 5m
+      labels:
+        severity: critical
+        {{- with $extra }}{{ toYaml . | nindent 8 }}{{- end }}
+      annotations:
+        summary: 'The MiloAgent data volume takes no writes ({{`{{ $labels.pod }}`}})'
+        description: 'The exporter cannot write and fsync its probe file on PVC {{ $full }}-data, or the file system is read-only. Every SQLite write of MiloAgent fails while the pod stays Ready. A container restart keeps the mount; snapshot the PVC, then recreate the pod.'
+        runbook_url: {{ $url }}#miloagentdatavolumenotwritable
+    - alert: MiloAgentDatabaseWriteErrors
+      expr: |
+        sum by (namespace, pod) (increase(miloagent_log_db_errors_total{namespace="{{ $ns }}", kind=~"db_io|db_readonly|db_malformed|db_full"}[30m])) > 0
+      for: 5m
+      labels:
+        severity: critical
+        {{- with $extra }}{{ toYaml . | nindent 8 }}{{- end }}
+      annotations:
+        summary: 'MiloAgent logs SQLite write errors ({{`{{ $labels.pod }}`}})'
+        description: 'MiloAgent logged disk I/O, read-only, malformed or full database errors in the last 30 minutes. Findings, actions and account health are not stored.'
+        runbook_url: {{ $url }}#miloagentdatabasewriteerrors
+    - alert: MiloAgentScheduledJobFailing
+      expr: |
+        sum by (namespace, pod, task) (increase(miloagent_scheduler_job_runs_total{namespace="{{ $ns }}", result="error"}[2h])) > 0
+      for: 5m
+      labels:
+        severity: warning
+        {{- with $extra }}{{ toYaml . | nindent 8 }}{{- end }}
+      annotations:
+        summary: 'MiloAgent job {{`{{ $labels.task }}`}} raised an exception'
+        description: 'The scheduled job {{`{{ $labels.task }}`}} raised an exception in the last 2 hours. The traceback follows the line "raised an exception" in the MiloAgent log.'
+        runbook_url: {{ $url }}#miloagentscheduledjobfailing
+    - alert: MiloAgentNoRecentScan
+      expr: |
+        (time() - max by (namespace, pod) (miloagent_last_scan_complete_timestamp_seconds{namespace="{{ $ns }}"})) > {{ $scan.maxAgeHours }} * 3600
+        and on () hour() >= {{ $scan.fromHour }} and on () hour() < {{ $scan.toHour }}
+      for: 15m
+      labels:
+        severity: warning
+        {{- with $extra }}{{ toYaml . | nindent 8 }}{{- end }}
+      annotations:
+        summary: 'MiloAgent completed no scan for {{`{{ $value | humanizeDuration }}`}}'
+        description: 'No "Scan cycle complete" in the MiloAgent log for more than {{ $scan.maxAgeHours }} hours inside its active hours. The scheduler or the scan is stuck, or the bot is paused.'
+        runbook_url: {{ $url }}#miloagentnorecentscan
+    - alert: MiloAgentAccountHealthStale
+      expr: |
+        (time() - max by (namespace, pod) (miloagent_account_health_timestamp_seconds{namespace="{{ $ns }}"})) > 3 * 3600
+      for: 15m
+      labels:
+        severity: warning
+        {{- with $extra }}{{ toYaml . | nindent 8 }}{{- end }}
+      annotations:
+        summary: 'MiloAgent wrote no account health for {{`{{ $value | humanizeDuration }}`}}'
+        description: 'The hourly health_check job has not stored an account health row for more than 3 hours: it crashes, the database takes no writes, or the bot is paused.'
+        runbook_url: {{ $url }}#miloagentaccounthealthstale
+    - alert: MiloAgentNotReady
+      expr: |
+        kube_deployment_status_replicas_available{namespace="{{ $ns }}", deployment="{{ $full }}"} < 1
+      for: 15m
+      labels:
+        severity: warning
+        {{- with $extra }}{{ toYaml . | nindent 8 }}{{- end }}
+      annotations:
+        summary: 'MiloAgent has no ready pod'
+        description: 'Deployment {{ $full }} has had no available replica for 15 minutes: the dashboard is down and no scan runs.'
+        runbook_url: {{ $url }}#miloagentnotready
+    - alert: MiloAgentRestarting
+      expr: |
+        increase(kube_pod_container_status_restarts_total{namespace="{{ $ns }}", pod=~"{{ $full }}-[a-z0-9]+-[a-z0-9]+"}[1h]) > 2
+      for: 5m
+      labels:
+        severity: warning
+        {{- with $extra }}{{ toYaml . | nindent 8 }}{{- end }}
+      annotations:
+        summary: 'MiloAgent container {{`{{ $labels.container }}`}} restarted {{`{{ $value | humanize }}`}} times in an hour'
+        description: 'A liveness probe fails or the process crashes. A liveness probe that checks the data volume fails when the volume or the SQLite database takes no writes.'
+        runbook_url: {{ $url }}#miloagentrestarting
+    - alert: MiloAgentVolumeFillingUp
+      expr: |
+        kubelet_volume_stats_used_bytes{namespace="{{ $ns }}", persistentvolumeclaim="{{ $full }}-data"}
+          / kubelet_volume_stats_capacity_bytes{namespace="{{ $ns }}", persistentvolumeclaim="{{ $full }}-data"} > 0.85
+      for: 30m
+      labels:
+        severity: warning
+        {{- with $extra }}{{ toYaml . | nindent 8 }}{{- end }}
+      annotations:
+        summary: 'PVC {{ $full }}-data is {{`{{ $value | humanizePercentage }}`}} full'
+        description: 'The data volume has been above 85 % for 30 minutes. A full volume stops every SQLite write of MiloAgent.'
+        runbook_url: {{ $url }}#miloagentvolumefillingup
+    - alert: MiloAgentMetricsDown
+      expr: |
+        up{namespace="{{ $ns }}", job="{{ $job }}"} == 0
+        or
+        absent(up{namespace="{{ $ns }}", job="{{ $job }}"})
+      for: 15m
+      labels:
+        severity: warning
+        {{- with $extra }}{{ toYaml . | nindent 8 }}{{- end }}
+      annotations:
+        summary: 'Prometheus cannot scrape the MiloAgent exporter'
+        description: 'Without the exporter every other MiloAgent alert except MiloAgentNotReady, MiloAgentRestarting and MiloAgentVolumeFillingUp stays silent.'
+        runbook_url: {{ $url }}#miloagentmetricsdown
+    - alert: MiloAgentRedditTokenExpired
+      expr: |
+        (time() - max by (namespace, pod, account) (miloagent_reddit_token_expired_timestamp_seconds{namespace="{{ $ns }}"})) < 24 * 3600
+      labels:
+        severity: warning
+        {{- with $extra }}{{ toYaml . | nindent 8 }}{{- end }}
+      annotations:
+        summary: 'Reddit token_v2 of u/{{`{{ $labels.account }}`}} expired'
+        description: 'MiloAgent cannot post or comment as u/{{`{{ $labels.account }}`}}; approved drafts fail. Refresh token_v2 in the dashboard accounts page.'
+        runbook_url: {{ $url }}#miloagentreddittokenexpired
+    - alert: MiloAgentRedditBlocked
+      expr: |
+        max by (namespace, pod) (miloagent_reddit_blocked_subreddits{namespace="{{ $ns }}"}) >= 5
+      for: 12h
+      labels:
+        severity: info
+        {{- with $extra }}{{ toYaml . | nindent 8 }}{{- end }}
+      annotations:
+        summary: 'Reddit blocks {{`{{ $value }}`}} subreddits for MiloAgent'
+        description: 'Reddit answers 403 or 429 for at least 5 subreddits for 12 hours; their scans find nothing. Reddit decides this, MiloAgent skips each for 4 hours.'
+        runbook_url: {{ $url }}#miloagentredditblocked
+{{- end }}
