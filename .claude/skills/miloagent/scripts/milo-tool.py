@@ -41,7 +41,7 @@ def _err_detail(e):
 def _login():
     pw = os.environ.get("MILO_WEB_PASS")
     if not pw:
-        _die("MILO_WEB_PASS is not set - source it from Vaultwarden")
+        _die("MILO_WEB_PASS is not set - read it from your secret store")
     data = json.dumps({"username": USER, "password": pw}).encode()
     req = urllib.request.Request(
         f"{BASE}/api/auth/login", data=data,
