@@ -24,6 +24,35 @@ resources:
     cpu: "2"
     memory: 2Gi
 
+# Probes of the miloagent container, each a probe spec; null drops one. The defaults
+# call GET /health, which answers from memory and does not see a broken data volume; a
+# downstream liveness override can check the volume as well. Helm merges an override
+# into these maps: an exec override sets httpGet: null.
+probes:
+  startup:
+    httpGet:
+      path: /health
+      port: web
+    periodSeconds: 10
+    failureThreshold: 30
+  readiness:
+    httpGet:
+      path: /health
+      port: web
+    initialDelaySeconds: 10
+    periodSeconds: 10
+  liveness:
+    httpGet:
+      path: /health
+      port: web
+    periodSeconds: 30
+    failureThreshold: 5
+
+# Extra containers in the pod (for example a metrics exporter sidecar) and extra volumes.
+# A sidecar can mount the volumes "data" (the PVC) and "logs" (the log emptyDir).
+extraContainers: []
+extraVolumes: []
+
 persistence:
   # null → use the cluster's default StorageClass. Override per-environment (e.g. an RWO
   # block class) in your downstream values. RWO is required (single-writer SQLite + Recreate).

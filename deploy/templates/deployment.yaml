@@ -37,24 +37,18 @@ spec:
           envFrom:
             - secretRef:
                 name: {{ include "miloagent.fullname" . }}-env
+          {{- with .Values.probes.startup }}
           startupProbe:
-            httpGet:
-              path: /health
-              port: web
-            periodSeconds: 10
-            failureThreshold: 30
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- with .Values.probes.readiness }}
           readinessProbe:
-            httpGet:
-              path: /health
-              port: web
-            initialDelaySeconds: 10
-            periodSeconds: 10
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- with .Values.probes.liveness }}
           livenessProbe:
-            httpGet:
-              path: /health
-              port: web
-            periodSeconds: 30
-            failureThreshold: 5
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
           resources:
             {{- toYaml .Values.resources | nindent 12 }}
           volumeMounts:
@@ -81,6 +75,9 @@ spec:
               subPath: {{ $k }}.yaml
             {{- end }}
             {{- end }}
+        {{- with .Values.extraContainers }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
       volumes:
         - name: data
           persistentVolumeClaim:
@@ -93,3 +90,6 @@ spec:
         - name: secret-files
           secret:
             secretName: {{ include "miloagent.fullname" . }}-files
+        {{- with .Values.extraVolumes }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
