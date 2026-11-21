@@ -250,6 +250,26 @@ docker compose logs -f
 ./deploy.sh --status   # Health check
 ```
 
+### Kubernetes / OpenShift (Helm)
+
+```bash
+helm repo add miloagent https://hoolia.github.io/miloagent
+helm install miloagent miloagent/miloagent -n miloagent --create-namespace \
+  --set route.host=milo.example.org
+```
+
+The chart lives in `deploy/`; `deploy/values.yaml` documents every value.
+
+- Credentials: `env` and `secrets` take plain values. To keep them out of the values, put
+  them in Secrets of your own and set `existingSecrets.env` (environment variables such as
+  `MILO_WEB_PASS`) and `existingSecrets.files` with `existingSecrets.fileKeys` (whole
+  files such as `llm.yaml`).
+- Monitoring: `monitoring.enabled: true` adds a ServiceMonitor, alert rules and the
+  Service `<release>-metrics` (Prometheus Operator CRDs required). The `miloagent_*`
+  series come from an exporter container you add with `extraContainers`;
+  [docs/alerts.md](docs/alerts.md) lists the series and is the runbook of every alert.
+- Tests: `tests/chart/run.sh` renders the chart and runs the promtool tests of the rules.
+
 ---
 
 ## Dashboards

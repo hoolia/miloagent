@@ -30,3 +30,12 @@ helm.sh/chart: {{ printf "%s-%s" .Chart.Name .Chart.Version | replace "+" "_" }}
 {{- define "miloagent.selectorLabels" -}}
 app: {{ include "miloagent.name" . }}
 {{- end -}}
+
+{{/* Labels of the metrics Service, ServiceMonitor and PrometheusRule */}}
+{{- define "miloagent.metricsLabels" -}}
+app.kubernetes.io/name: {{ include "miloagent.name" . }}-metrics
+app.kubernetes.io/instance: {{ .Release.Name }}
+app.kubernetes.io/part-of: {{ include "miloagent.name" . }}
+app.kubernetes.io/managed-by: {{ .Release.Service }}
+helm.sh/chart: {{ printf "%s-%s" .Chart.Name .Chart.Version | replace "+" "_" }}
+{{- end -}}

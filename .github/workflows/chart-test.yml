@@ -1,0 +1,35 @@
+name: chart-test
+
+on:
+  pull_request:
+    paths: ["deploy/**", "docs/alerts.md", "tests/chart/**"]
+  push:
+    branches: [main]
+    paths: ["deploy/**", "docs/alerts.md", "tests/chart/**"]
+
+permissions:
+  contents: read
+
+jobs:
+  chart:
+    runs-on: ubuntu-latest
+    env:
+      PROMETHEUS_VERSION: "3.5.0"
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: azure/setup-helm@v4
+        with:
+          version: v3.16.0
+
+      - name: Install promtool and PyYAML
+        run: |
+          pip install --quiet pyyaml
+          curl -fsSL "https://github.com/prometheus/prometheus/releases/download/v${PROMETHEUS_VERSION}/prometheus-${PROMETHEUS_VERSION}.linux-amd64.tar.gz" \
+            | sudo tar -xz -C /usr/local/bin --strip-components=1 "prometheus-${PROMETHEUS_VERSION}.linux-amd64/promtool"
+
+      - name: Lint the chart
+        run: helm lint deploy --set monitoring.enabled=true
+
+      - name: Render checks and alert rule tests
+        run: bash tests/chart/run.sh

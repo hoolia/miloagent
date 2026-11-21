@@ -37,6 +37,10 @@ spec:
           envFrom:
             - secretRef:
                 name: {{ include "miloagent.fullname" . }}-env
+            {{- with .Values.existingSecrets.env }}
+            - secretRef:
+                name: {{ . }}
+            {{- end }}
           {{- with .Values.probes.startup }}
           startupProbe:
             {{- toYaml . | nindent 12 }}
@@ -68,11 +72,20 @@ spec:
               mountPath: /app/config/expert_personas.yaml
               subPath: expert_personas.yaml
               readOnly: true
+            {{- $fileKeys := .Values.existingSecrets.fileKeys }}
             {{- range $k, $v := .Values.secrets }}
-            {{- if $v }}
+            {{- if and $v (not (has $k $fileKeys)) }}
             - name: secret-files
               mountPath: /app/config/{{ $k }}.yaml
               subPath: {{ $k }}.yaml
+            {{- end }}
+            {{- end }}
+            {{- if .Values.existingSecrets.files }}
+            {{- range $fileKeys }}
+            - name: existing-secret-files
+              mountPath: /app/config/{{ . }}.yaml
+              subPath: {{ . }}.yaml
+              readOnly: true
             {{- end }}
             {{- end }}
         {{- with .Values.extraContainers }}
@@ -90,6 +103,11 @@ spec:
         - name: secret-files
           secret:
             secretName: {{ include "miloagent.fullname" . }}-files
+        {{- with .Values.existingSecrets.files }}
+        - name: existing-secret-files
+          secret:
+            secretName: {{ . }}
+        {{- end }}
         {{- with .Values.extraVolumes }}
         {{- toYaml . | nindent 8 }}
         {{- end }}
