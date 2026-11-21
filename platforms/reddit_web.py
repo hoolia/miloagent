@@ -143,7 +143,7 @@ class RedditWebBot(BasePlatform):
         """Load saved session cookies from account config or from file.
 
         Checks account_config['token_v2'] first — set this in
-        application-miloagent.yaml to provide a fresh token without restarting.
+        the deployment's reddit_accounts secret to provide a fresh token without restarting.
         Falls back to the cookies file on disk.
         """
         token_from_config = self.account_config.get("token_v2", "")
@@ -245,7 +245,7 @@ class RedditWebBot(BasePlatform):
           2. Load token_v2 from account config or cookies file
           3. Bearer token via oauth.reddit.com (fallback for new-Reddit sessions)
         No automatic relogin. When the token expires, the bot logs a clear error
-        with instructions to update token_v2 in application-miloagent.yaml.
+        with instructions to update token_v2 in the deployment's reddit_accounts secret.
         """
         if self._authenticated:
             try:
@@ -277,8 +277,8 @@ class RedditWebBot(BasePlatform):
                 "Get a fresh token_v2 from your browser:\n"
                 "  1. Open reddit.com (logged in) → F12 → Application → Cookies → reddit.com\n"
                 "  2. Copy the 'token_v2' value\n"
-                "  3. Set token_v2: \"<value>\" under the account in application-miloagent.yaml\n"
-                "  4. Run: oc apply -f users/grncloud/application-miloagent.yaml"
+                "  3. Set token_v2: \"<value>\" under the account in the Helm value secrets.reddit_accounts\n"
+                "  4. Redeploy the release (helm upgrade or a GitOps sync)"
             )
             return False
 
@@ -307,8 +307,8 @@ class RedditWebBot(BasePlatform):
                 "Get a fresh token_v2 from your browser:\n"
                 "  1. Open reddit.com (logged in) → F12 → Application → Cookies → reddit.com\n"
                 "  2. Copy the 'token_v2' value\n"
-                "  3. Set token_v2: \"<value>\" under the account in application-miloagent.yaml\n"
-                "  4. Run: oc apply -f users/grncloud/application-miloagent.yaml"
+                "  3. Set token_v2: \"<value>\" under the account in the Helm value secrets.reddit_accounts\n"
+                "  4. Redeploy the release (helm upgrade or a GitOps sync)"
             )
             return False
 

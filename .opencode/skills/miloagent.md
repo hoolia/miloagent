@@ -1,5 +1,5 @@
 ---
-description: Use when editing or inspecting MiloAgent dashboard projects, prompt templates, or personas via its HTTPS API at milo.grn.cloud - listing/creating/updating a project, editing a prompt or persona per project, or reverting an override. Not for cluster/pod operations (use oc) or Reddit account/token work.
+description: Use when editing or inspecting MiloAgent dashboard projects, prompt templates, or personas via its HTTPS API - listing/creating/updating a project, editing a prompt or persona per project, or reverting an override. Not for cluster/pod operations (use oc) or Reddit account/token work.
 mode: skill
 hidden: false
 ---

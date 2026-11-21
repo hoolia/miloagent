@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """CLI for the MiloAgent dashboard API - projects, prompts, and personas.
 
-Reads MILO_BASE (default https://milo.grn.cloud), MILO_WEB_USER (default admin),
-and MILO_WEB_PASS from the environment. Source MILO_WEB_PASS from Vaultwarden.
+Reads MILO_BASE (default http://localhost:8420), MILO_WEB_USER (default admin),
+and MILO_WEB_PASS from the environment. Read MILO_WEB_PASS from your secret store.
 Stdlib only - no pip install needed.
 """
 
@@ -17,7 +17,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-BASE = os.environ.get("MILO_BASE", "https://milo.grn.cloud").rstrip("/")
+BASE = os.environ.get("MILO_BASE", "http://localhost:8420").rstrip("/")
 USER = os.environ.get("MILO_WEB_USER", "admin")
 
 

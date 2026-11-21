@@ -1328,7 +1328,7 @@ def login(platform, account, all_accounts):
     click.echo("  1. paste-cookies — paste from browser DevTools:")
     click.echo("       python miloagent.py paste-cookies reddit")
     click.echo("")
-    click.echo("  2. token_v2 in config — add to application-miloagent.yaml:")
+    click.echo("  2. token_v2 in config — add to your Helm values:")
     click.echo("       secrets.reddit_accounts → accounts[0] → token_v2: \"<value>\"")
     click.echo("       Get token_v2: reddit.com → F12 → Application → Cookies → reddit.com")
 

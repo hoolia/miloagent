@@ -17,7 +17,7 @@ def _project(relevance_terms=None):
     }
     if relevance_terms is not None:
         reddit["relevance_terms"] = relevance_terms
-    return {"project": {"name": "grncloud"}, "reddit": reddit}
+    return {"project": {"name": "my_project"}, "reddit": reddit}
 
 
 def _opp(title, subreddit, post_score=200, num_comments=2, age_hours=1.0):

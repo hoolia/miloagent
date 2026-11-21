@@ -1,6 +1,8 @@
 {
   "$schema": "https://docs.renovatebot.com/renovate-schema.json",
-  "extends": ["local>grncloud/cicd//renovate/default"],
+  "extends": [
+    "config:recommended"
+  ],
   "ignorePaths": [
     "**/node_modules/**",
     "**/vendor/**",
@@ -10,7 +12,9 @@
   "packageRules": [
     {
       "description": "passlib 1.7.x crashes on bcrypt 4.1 and later",
-      "matchPackageNames": ["bcrypt"],
+      "matchPackageNames": [
+        "bcrypt"
+      ],
       "allowedVersions": "<4.1"
     }
   ]

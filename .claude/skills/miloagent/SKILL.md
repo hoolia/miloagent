@@ -1,6 +1,6 @@
 ---
 name: miloagent
-description: Use when editing or inspecting MiloAgent dashboard projects, prompt templates, or personas via its HTTPS API at milo.grn.cloud - listing/creating/updating a project, editing a prompt or persona per project, or reverting an override. Not for cluster/pod operations (use oc) or Reddit account/token work.
+description: Use when editing or inspecting MiloAgent dashboard projects, prompt templates, or personas via its HTTPS API - listing/creating/updating a project, editing a prompt or persona per project, or reverting an override. Not for cluster/pod operations (use oc) or Reddit account/token work.
 ---
 
 # MiloAgent - Dashboard project, prompt, and persona management
@@ -20,23 +20,23 @@ $TOOL health
 # Projects (persist to the projects/*.yaml on the PVC)
 $TOOL projects                                  # list
 $TOOL project-schema                            # the editable field tree
-$TOOL project get grncloud
-$TOOL project set grncloud --json '{"project":{"tagline":"New tagline"}}'
-$TOOL project set grncloud --file patch.json    # same, patch from a file
+$TOOL project get my_project
+$TOOL project set my_project --json '{"project":{"tagline":"New tagline"}}'
+$TOOL project set my_project --file patch.json    # same, patch from a file
 $TOOL project create --name X --url https://x --description "..." [--type SaaS --weight 1.0 --tagline "..."]
 $TOOL project delete X
 
 # Prompt templates (per-project DB overrides, applied live)
-$TOOL prompts --project grncloud                # list; has_override marks edited ones
-$TOOL prompt get reddit_comment --project grncloud   # body -> stdout, name/state/placeholders -> stderr
-$TOOL prompt set reddit_comment --project grncloud --file new.txt   # or --content '...'
-$TOOL prompt revert reddit_comment --project grncloud              # back to built-in default
+$TOOL prompts --project my_project                # list; has_override marks edited ones
+$TOOL prompt get reddit_comment --project my_project   # body -> stdout, name/state/placeholders -> stderr
+$TOOL prompt set reddit_comment --project my_project --file new.txt   # or --content '...'
+$TOOL prompt revert reddit_comment --project my_project              # back to built-in default
 
 # Personas (per-project DB overrides, YAML)
-$TOOL personas --project grncloud
-$TOOL persona get dev_tech --project grncloud
-$TOOL persona set dev_tech --project grncloud --file persona.yaml   # or --content '...'
-$TOOL persona revert dev_tech --project grncloud
+$TOOL personas --project my_project
+$TOOL persona get dev_tech --project my_project
+$TOOL persona set dev_tech --project my_project --file persona.yaml   # or --content '...'
+$TOOL persona revert dev_tech --project my_project
 ```
 
 Edit-then-verify: after `set`, run the matching `get`/list to confirm `has_override` /
@@ -46,16 +46,15 @@ effective content to stdout (pipe-friendly) and a state header to stderr.
 ## Credentials
 
 The CLI reads `MILO_WEB_USER` (default `admin`) and `MILO_WEB_PASS` from the environment,
-and `MILO_BASE` (default `https://milo.grn.cloud`). Source `MILO_WEB_PASS` fresh from
-Vaultwarden (`vault.grn.cloud`) each run - never hardcode it or rely on a shell profile.
-Vault item: `MiloAgent dashboard - milo.grn.cloud (openshift-config)`.
+and `MILO_BASE`, the dashboard URL (default `http://localhost:8420`). Read `MILO_WEB_PASS`
+fresh from your secret store each run - never hardcode it or rely on a shell profile.
 
 The login token is cached under the system temp dir (0600, keyed by host+user) and reused
 for its 24h life; a `401` triggers one transparent re-login and retry.
 
 ## Gotchas
 
-- **Per-project.** Prompt/persona edits are scoped to `--project` (e.g. `grncloud`); other
+- **Per-project.** Prompt/persona edits are scoped to `--project` (e.g. `my_project`); other
   projects keep defaults. Project edits target `projects/<name>.yaml`.
 - **Project `set` is a deep-merge:** dicts merge key-wise, but **lists and scalars REPLACE**.
   To append to a list (keywords, features, ...), send the full new list, not just the addition.
