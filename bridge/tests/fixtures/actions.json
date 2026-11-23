@@ -1,0 +1,4 @@
+[
+  {"id": 247, "timestamp": "2026-07-20 00:42:41", "platform": "reddit", "action_type": "comment", "account": "Example_Account123", "project": "example", "target_id": "1aaa002", "content": "what does your current setup look like", "metadata": "{\"comment_id\": \"c0aa001\", \"comment_url\": \"https://reddit.com/r/selfhosted/comments/1aaa002/example_question/c0aa001\", \"subreddit\": \"selfhosted\", \"method\": \"web_session\"}", "success": 1, "error_message": ""},
+  {"id": 246, "timestamp": "2026-07-19 10:00:00", "platform": "reddit", "action_type": "comment", "account": "Example_Account123", "project": "example", "target_id": "1aaa001", "content": "a small shared host is usually enough", "metadata": "{\"subreddit\": \"selfhosted\", \"promotional\": false}", "success": 0, "error_message": "rate limited"}
+]

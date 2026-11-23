@@ -31,6 +31,28 @@ identities, so a bug becomes a ban, spam or a leaked session.
 - Dependencies in `requirements.txt` are pinned.
 - Tests in `tests/` cover a changed safety rule.
 
+## Bridge (`bridge/`)
+
+The bridge is a separate image: a read-only MCP server and `GET /signals` over the
+dashboard API, and a Prometheus exporter sidecar. P0 or P1 when a change breaks one of these:
+
+- MiloAgent stays unchanged. No change may add a request that writes to MiloAgent: no
+  approve, reject, control, settings, accounts or cookies call, and no generic request
+  helper on `MiloAgentClient`. The only POST is the login.
+- The bridge server (`server.py`, `client.py`, `mapping.py`) never opens MiloAgent's
+  SQLite file or its volume, and never imports `exporter.py`.
+- The exporter (`exporter.py`) opens the SQLite file with `mode=ro` only, reads the log
+  file only, calls only the unauthenticated `GET /health`, and writes only its own probe
+  file at the volume root. SQLite itself may create or update the `-shm` and `-wal` side
+  files of a WAL database for a `mode=ro` reader; that is not a write by the exporter. It
+  uses the standard library only.
+- Every tool that returns Reddit text says in its description that the text is
+  untrusted data.
+- Errors returned to callers never carry the dashboard password or session token.
+- `GET /signals` keeps the signal record documented in `bridge/README.md`.
+- Dependencies are pinned in `bridge/pyproject.toml` and hashed in
+  `bridge/requirements.lock`; the Containerfile installs from the lock only.
+
 ## Out of scope
 
 - Prompt wording, persona text, README marketing copy, screenshots, formatting.
