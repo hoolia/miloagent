@@ -13,6 +13,9 @@ identities, so a bug becomes a ban, spam or a leaked session.
 - The dashboard auth is weakened: default `MILO_WEB_PASS=changeme` accepted, an
   unauthenticated route, a new endpoint that can act or read config, or the dashboard bound
   or exposed (`deploy/templates/route.yaml`) without credentials.
+- The bridge (`bridge/`, `docs/bridge.md`) gains a write path to MiloAgent (a request
+  beyond the login and the two GET exports), or its unauthenticated server is reachable
+  beyond its NetworkPolicy (a Route, a wider ingress default).
 - A change in `safety/` (rate limiter, ban detector, dedup, account manager) or in
   `core/content_validator.py` that lets the agent post more often, skip the dedup, ignore
   a ban or removal signal, or post unvalidated LLM output.

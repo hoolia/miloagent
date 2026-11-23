@@ -17,9 +17,10 @@ flowchart LR
   prom --> am[Alertmanager]
 ```
 
-- The `miloagent_*` series come from an exporter container in the pod with a port named
-  `metrics`, added with the chart value `extraContainers`. It reads the log and the
-  database read-only and writes only its own probe file at the root of the data volume.
+- The `miloagent_*` series come from the exporter container of the bridge image
+  ([bridge.md](bridge.md)), which the chart adds with `monitoring.enabled` and
+  `bridge.exporter.enabled`. It reads the log and the database read-only and writes
+  only its own probe file at the root of the data volume.
 - `MiloAgentNotReady`, `MiloAgentRestarting` and `MiloAgentVolumeFillingUp` read
   kube-state-metrics and the kubelet. Every other alert reads the exporter and stays
   silent while `MiloAgentMetricsDown` fires.
@@ -194,8 +195,8 @@ Check:
 2. `Multi-Attach error` or `FailedMount`: the ReadWriteOnce volume is still attached to
    another node; read the attachment with `oc get volumeattachment | grep <pv name>` and
    ask the storage owner before touching it.
-3. `ImagePullBackOff`: the MiloAgent image (`image.repository`) or the exporter image is
-   not reachable.
+3. `ImagePullBackOff`: the MiloAgent image (`image.repository`) or the bridge image
+   (`bridge.image.repository`) is not reachable.
 
 ### MiloAgentRestarting
 
@@ -232,8 +233,8 @@ minutes.
 Check:
 
 1. **safe** `oc -n $ns get pods -l app=miloagent -o jsonpath='{.items[0].spec.containers[*].name}'`
-   lists `miloagent exporter`; without `exporter` the chart values lost
-   `extraContainers`.
+   lists `miloagent exporter`; without `exporter` the chart values set
+   `bridge.enabled` or `bridge.exporter.enabled` to false.
 2. **safe** `oc -n $ns get endpoints miloagent-metrics` lists the pod on port 9420.
 3. **safe** `oc -n $ns logs deploy/miloagent -c exporter --tail=20`
 

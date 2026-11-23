@@ -1,0 +1,32 @@
+{{- if and .Values.bridge.enabled .Values.bridge.server.enabled }}
+{{- $server := .Values.bridge.server }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "miloagent.bridge.fullname" . }}
+  labels:
+    {{- include "miloagent.bridge.labels" . | nindent 4 }}
+  {{- if or $server.service.annotations $server.mcp.targetName }}
+  annotations:
+    {{- with $server.service.annotations }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+    {{- with $server.mcp.targetName }}
+    # MCP target discovery of an agentgateway
+    agentgateway.dev/mcp-path: /mcp
+    agentgateway.dev/mcp-target-name: {{ . | quote }}
+    {{- end }}
+  {{- end }}
+spec:
+  type: ClusterIP
+  selector:
+    {{- include "miloagent.bridge.selectorLabels" . | nindent 4 }}
+  ports:
+    - name: mcp
+      port: {{ $server.service.port }}
+      targetPort: mcp
+      protocol: TCP
+      {{- with $server.mcp.appProtocol }}
+      appProtocol: {{ . }}
+      {{- end }}
+{{- end }}

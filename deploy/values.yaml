@@ -48,15 +48,83 @@ probes:
     periodSeconds: 30
     failureThreshold: 5
 
-# Extra containers in the pod (for example a metrics exporter sidecar) and extra volumes.
-# A sidecar can mount the volumes "data" (the PVC) and "logs" (the log emptyDir).
+# Extra containers in the pod and extra volumes. A sidecar can mount the volumes "data"
+# (the PVC) and "logs" (the log emptyDir). The name "exporter" belongs to bridge.exporter.
 extraContainers: []
 extraVolumes: []
 
+# Read-only bridge to MiloAgent (docs/bridge.md), one image built from bridge/ of this
+# repository. It changes nothing in MiloAgent: no approve, post, pause or settings path.
+bridge:
+  enabled: true
+  image:
+    repository: ghcr.io/hoolia/miloagent-bridge
+    tag: latest
+    pullPolicy: Always
+  # Deployment and Service <release>-bridge: MCP (streamable HTTP, stateless) at /mcp,
+  # GET /signals and GET /healthz on port 8000. It logs in to the dashboard API as
+  # env.MILO_WEB_USER and reads two exports. Callers are not authenticated; put an MCP
+  # gateway in front and keep the NetworkPolicy.
+  server:
+    enabled: true
+    # Secret key with the dashboard password. An empty name takes the chart's env Secret
+    # when env.MILO_WEB_PASS is set, else existingSecrets.env.
+    passwordSecret:
+      name: ""
+      key: MILO_WEB_PASS
+    # Extra environment: MILOAGENT_CACHE_SECONDS, MILOAGENT_SIGNAL_STATUSES, MILOAGENT_TIMEOUT
+    env: {}
+    resources:
+      requests:
+        cpu: 10m
+        memory: 64Mi
+      limits:
+        cpu: 500m
+        memory: 256Mi
+    service:
+      port: 8000
+      annotations: {}
+    mcp:
+      # Non-empty: annotations agentgateway.dev/mcp-path and mcp-target-name for the
+      # MCP target discovery of an agentgateway
+      targetName: ""
+      # Service port appProtocol, for example agentgateway.dev/mcp
+      appProtocol: ""
+    networkPolicy:
+      enabled: true
+      # Namespace selectors allowed besides the own namespace, for example an MCP gateway:
+      # - matchLabels: {kubernetes.io/metadata.name: agentgateway}
+      ingressNamespaces: []
+      # Egress limited to DNS and MiloAgent's dashboard port
+      egress:
+        enabled: false
+        dns:
+          namespace: openshift-dns
+          port: 5353
+  # Prometheus exporter sidecar "exporter" in the MiloAgent pod, on port monitoring.port.
+  # Rendered only with monitoring.enabled. It runs as root because MiloAgent's volume
+  # belongs to root (anyuid, see securityContext.enabled), without any capability.
+  exporter:
+    enabled: true
+    # EXPORTER_INTERVAL_SECONDS, EXPORTER_TIMEOUT_SECONDS
+    env: {}
+    resources:
+      requests:
+        cpu: 10m
+        memory: 32Mi
+      limits:
+        memory: 128Mi
+    securityContext:
+      runAsUser: 0
+      allowPrivilegeEscalation: false
+      readOnlyRootFilesystem: true
+      capabilities:
+        drop: [ALL]
+
 # Prometheus Operator monitoring: a metrics Service, a ServiceMonitor and the alert rules
-# of docs/alerts.md. The miloagent_* series come from an exporter container in the pod
-# with a port named "metrics" (add it with extraContainers); without one only the
-# kube-state-metrics and kubelet alerts work. Needs the monitoring.coreos.com CRDs.
+# of docs/alerts.md. The miloagent_* series come from the exporter container of
+# bridge.exporter; without it only the kube-state-metrics and kubelet alerts work. Needs
+# the monitoring.coreos.com CRDs.
 monitoring:
   enabled: false
   port: 9420

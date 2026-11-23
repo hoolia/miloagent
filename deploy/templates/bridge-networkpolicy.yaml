@@ -1,0 +1,50 @@
+{{- if and .Values.bridge.enabled .Values.bridge.server.enabled .Values.bridge.server.networkPolicy.enabled }}
+{{- $np := .Values.bridge.server.networkPolicy }}
+# The bridge answers without authentication: callers are the own namespace and the
+# listed namespaces (an MCP gateway, a consumer of /signals) only.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "miloagent.bridge.fullname" . }}
+  labels:
+    {{- include "miloagent.bridge.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      {{- include "miloagent.bridge.selectorLabels" . | nindent 6 }}
+  policyTypes:
+    - Ingress
+    {{- if $np.egress.enabled }}
+    - Egress
+    {{- end }}
+  ingress:
+    - ports:
+        - protocol: TCP
+          port: mcp
+      from:
+        - podSelector: {}
+        {{- range $np.ingressNamespaces }}
+        - namespaceSelector:
+            {{- toYaml . | nindent 12 }}
+        {{- end }}
+  {{- if $np.egress.enabled }}
+  # DNS and MiloAgent's dashboard API, nothing else
+  egress:
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: {{ $np.egress.dns.namespace }}
+      ports:
+        - protocol: UDP
+          port: {{ $np.egress.dns.port }}
+        - protocol: TCP
+          port: {{ $np.egress.dns.port }}
+    - to:
+        - podSelector:
+            matchLabels:
+              {{- include "miloagent.selectorLabels" . | nindent 14 }}
+      ports:
+        - protocol: TCP
+          port: {{ .Values.service.port }}
+  {{- end }}
+{{- end }}

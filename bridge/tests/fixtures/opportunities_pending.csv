@@ -1,0 +1,3 @@
+id,timestamp,platform,target_id,title,subreddit_or_query,score,project,status,metadata,rejection_reason,draft_response,url
+30001,2026-11-20 22:10:00,reddit,1abcd03,Example question three,kubernetes,7.5,my_project,pending,"{""keyword"": ""example keyword"", ""author_name"": ""u/k8s_fan"", ""created_utc"": 1795210200}",,,https://reddit.com/r/kubernetes/comments/1abcd03/example_question_three
+30002,2026-11-20 23:00:00,twitter,1888,Example question four,example query,6.0,my_project,pending,"{""author"": ""someone""}",,,https://x.com/someone/status/1888

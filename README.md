@@ -266,8 +266,15 @@ The chart lives in `deploy/`; `deploy/values.yaml` documents every value.
   files such as `llm.yaml`).
 - Monitoring: `monitoring.enabled: true` adds a ServiceMonitor, alert rules and the
   Service `<release>-metrics` (Prometheus Operator CRDs required). The `miloagent_*`
-  series come from an exporter container you add with `extraContainers`;
-  [docs/alerts.md](docs/alerts.md) lists the series and is the runbook of every alert.
+  series come from the bridge's exporter container, which the chart adds with
+  monitoring; [docs/alerts.md](docs/alerts.md) lists the series and is the runbook of
+  every alert.
+- Bridge: `bridge.enabled` (default `true`) adds the read-only bridge, the Deployment
+  and Service `<release>-bridge` with an MCP server at `:8000/mcp` and `GET /signals`.
+  [docs/bridge.md](docs/bridge.md) describes it; `bridge.enabled: false` leaves the
+  chart as it was without the bridge.
+- Upgrade from 0.3: an exporter in `extraContainers` moves to `bridge.exporter`; the
+  chart refuses a second container named `exporter`.
 - Tests: `tests/chart/run.sh` renders the chart and runs the promtool tests of the rules.
 
 ---
