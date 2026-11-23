@@ -18,8 +18,8 @@ flowchart LR
 ```
 
 - The `miloagent_*` series come from the exporter container of the bridge image
-  ([bridge.md](bridge.md)), which the chart adds with `monitoring.enabled` and
-  `bridge.exporter.enabled`. It reads the log and the database read-only and writes
+  ([bridge/README.md](../bridge/README.md#exporter)), which the chart adds with
+  `monitoring.enabled` and `bridge.exporter.enabled`. It reads the log and the database read-only and writes
   only its own probe file at the root of the data volume.
 - `MiloAgentNotReady`, `MiloAgentRestarting` and `MiloAgentVolumeFillingUp` read
   kube-state-metrics and the kubelet. Every other alert reads the exporter and stays

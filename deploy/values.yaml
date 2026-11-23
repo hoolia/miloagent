@@ -53,7 +53,7 @@ probes:
 extraContainers: []
 extraVolumes: []
 
-# Read-only bridge to MiloAgent (docs/bridge.md), one image built from bridge/ of this
+# Read-only bridge to MiloAgent (bridge/README.md), one image built from bridge/ of this
 # repository. It changes nothing in MiloAgent: no approve, post, pause or settings path.
 bridge:
   enabled: true

@@ -1,6 +1,6 @@
 {{- if and .Values.bridge.enabled .Values.bridge.server.enabled }}
 {{- $server := .Values.bridge.server }}
-# Read-only bridge (docs/bridge.md): MCP at /mcp, GET /signals and GET /healthz. It reads
+# Read-only bridge (bridge/README.md): MCP at /mcp, GET /signals and GET /healthz. It reads
 # MiloAgent's dashboard API with the dashboard password; it has no write path.
 apiVersion: apps/v1
 kind: Deployment

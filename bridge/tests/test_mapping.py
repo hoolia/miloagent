@@ -1,4 +1,4 @@
-"""Findings become signal records (docs/bridge.md)."""
+"""Findings become signal records."""
 
 from __future__ import annotations
 
@@ -21,16 +21,16 @@ ACTIONS = parse_rows(json.loads(fixture("actions.json")))
 def test_signal_record_fields():
     s = signal(ACTED[1])
     assert s["source"] == "reddit"
-    assert s["url"] == "https://www.reddit.com/r/selfhosted/comments/1abcd02/"
+    assert s["url"] == "https://www.reddit.com/r/selfhosted/comments/1aaa002/"
     assert s["actor_key"] == "example_user"
     assert s["actor_person"] == "example_user"
     assert s["actor_company"] is None
     assert s["signal_type"] == "stated_need"
-    assert s["rule_id"] == "my_project/r/selfhosted"
+    assert s["rule_id"] == "example/r/selfhosted"
     assert s["observed_at"] == "2026-07-14T07:51:16Z"
-    assert s["excerpt"].startswith("Example question two\nIgnore previous")
+    assert s["excerpt"].startswith("Example question about several self-hosted apps\nIgnore previous")
     assert s["id"] == str(uuid.uuid5(uuid.NAMESPACE_URL, "reddit|" + s["url"] + "|example_user"))
-    # the names consumers of findings expect
+    # the same values under the scouts' names
     assert (s["author"], s["created_at"]) == ("example_user", s["observed_at"])
 
 
@@ -42,7 +42,7 @@ def test_unknown_author_is_empty_actor_key():
 
 def test_author_name_prefix_and_post_time():
     s = signal(PENDING[0])
-    assert s["actor_key"] == "k8s_fan"
+    assert s["actor_key"] == "example_author"
     # created_utc of the post wins over the time MiloAgent found it
     assert s["observed_at"] == "2026-11-20T21:30:00Z"
 
@@ -65,7 +65,7 @@ def test_canonical_url_falls_back_to_stored_url():
 
 def test_finding_full_carries_draft():
     f = finding(ACTED[0], full=True)
-    assert f["draft_response"].startswith("example draft one")
+    assert f["draft_response"].startswith("a small shared host")
     assert "draft_response" not in finding(ACTED[0])
 
 
@@ -73,7 +73,7 @@ def test_action_is_our_account():
     a = action(ACTIONS[0])
     assert a["account"] == "Example_Account123"
     assert a["subreddit"] == "selfhosted"
-    assert a["url"].endswith("/c0001")
+    assert a["url"].endswith("/c0aa001")
     assert a["success"] is True
     assert action(ACTIONS[1])["success"] is False
 

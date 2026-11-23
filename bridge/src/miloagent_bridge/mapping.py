@@ -1,4 +1,4 @@
-"""Map MiloAgent rows to findings, actions and signal records (docs/bridge.md)."""
+"""Map MiloAgent rows to findings, actions and signal records (README "GET /signals")."""
 
 from __future__ import annotations
 
@@ -115,10 +115,10 @@ def action(row: dict[str, Any]) -> dict[str, Any]:
 
 
 def signal(row: dict[str, Any]) -> dict[str, Any] | None:
-    """A signal record (docs/bridge.md) for a Reddit finding; None for other platforms.
+    """A signal record for a Reddit finding; None for other platforms.
 
     The keys author, title, text and created_at repeat the record under the names
-    that consumers of findings commonly expect.
+    that scouts reading findings expect.
     """
     if row.get("platform") != "reddit":
         return None

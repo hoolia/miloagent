@@ -13,9 +13,6 @@ identities, so a bug becomes a ban, spam or a leaked session.
 - The dashboard auth is weakened: default `MILO_WEB_PASS=changeme` accepted, an
   unauthenticated route, a new endpoint that can act or read config, or the dashboard bound
   or exposed (`deploy/templates/route.yaml`) without credentials.
-- The bridge (`bridge/`, `docs/bridge.md`) gains a write path to MiloAgent (a request
-  beyond the login and the two GET exports), or its unauthenticated server is reachable
-  beyond its NetworkPolicy (a Route, a wider ingress default).
 - A change in `safety/` (rate limiter, ban detector, dedup, account manager) or in
   `core/content_validator.py` that lets the agent post more often, skip the dedup, ignore
   a ban or removal signal, or post unvalidated LLM output.
@@ -33,6 +30,30 @@ identities, so a bug becomes a ban, spam or a leaked session.
 - SQLite schema changes in `core/database.py` migrate existing data.
 - Dependencies in `requirements.txt` are pinned.
 - Tests in `tests/` cover a changed safety rule.
+
+## Bridge (`bridge/`)
+
+The bridge is a separate image: a read-only MCP server and `GET /signals` over the
+dashboard API, and a Prometheus exporter sidecar. P0 or P1 when a change breaks one of these:
+
+- MiloAgent stays unchanged. No change may add a request that writes to MiloAgent: no
+  approve, reject, control, settings, accounts or cookies call, and no generic request
+  helper on `MiloAgentClient`. The only POST is the login.
+- The bridge server (`server.py`, `client.py`, `mapping.py`) never opens MiloAgent's
+  SQLite file or its volume, and never imports `exporter.py`.
+- The exporter (`exporter.py`) opens the SQLite file with `mode=ro` only, reads the log
+  file only, calls only the unauthenticated `GET /health`, and writes only its own probe
+  file at the volume root. SQLite itself may create or update the `-shm` and `-wal` side
+  files of a WAL database for a `mode=ro` reader; that is not a write by the exporter. It
+  uses the standard library only.
+- Every tool that returns Reddit text says in its description that the text is
+  untrusted data.
+- Errors returned to callers never carry the dashboard password or session token.
+- `GET /signals` keeps the signal record documented in `bridge/README.md`.
+- The chart keeps the unauthenticated bridge server in-cluster: no Route, and its
+  NetworkPolicy on by default admitting only the own namespace and the listed ones.
+- Dependencies are pinned in `bridge/pyproject.toml` and hashed in
+  `bridge/requirements.lock`; the Containerfile installs from the lock only.
 
 ## Out of scope
 

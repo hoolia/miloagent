@@ -95,7 +95,7 @@ spec:
         {{- fail "extraContainers has a container named exporter: the chart adds it with bridge.exporter; remove it from extraContainers or set bridge.exporter.enabled=false" }}
         {{- end }}
         {{- end }}
-        # Prometheus exporter of the bridge image (docs/alerts.md): reads the log and the
+        # Prometheus exporter of the bridge image (docs/alerts.md, bridge/README.md): reads the log and the
         # database read-only, writes only its own probe file at the volume root
         - name: exporter
           image: {{ include "miloagent.bridge.image" . | quote }}

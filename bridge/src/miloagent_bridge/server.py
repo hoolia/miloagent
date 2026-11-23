@@ -27,7 +27,7 @@ UNTRUSTED = (
 )
 
 INSTRUCTIONS = (
-    "Read what MiloAgent, the Reddit agent, found and did. This server cannot change "
+    "Read what MiloAgent, a Reddit bot, found and did. This server cannot change "
     "MiloAgent: it has no tool to approve, reject, post, pause or configure anything. " + UNTRUSTED
 )
 
