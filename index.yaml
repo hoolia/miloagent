@@ -3,6 +3,17 @@ entries:
   miloagent:
   - apiVersion: v2
     appVersion: latest
+    created: "2026-11-24T20:17:20.41704143Z"
+    description: MiloAgent — autonomous community agent (FastAPI dashboard + APScheduler
+      daemon)
+    digest: b30a8ededc5e58154b61982ea347ea6e1d2201d4a25ea861d3484c96a35c6d6e
+    name: miloagent
+    type: application
+    urls:
+    - https://hoolia.github.io/miloagent/miloagent-0.4.0.tgz
+    version: 0.4.0
+  - apiVersion: v2
+    appVersion: latest
     created: "2026-11-21T18:13:45.121324475Z"
     description: MiloAgent — autonomous community agent (FastAPI dashboard + APScheduler
       daemon)
@@ -34,4 +45,4 @@ entries:
     urls:
     - https://hoolia.github.io/miloagent/miloagent-0.1.0.tgz
     version: 0.1.0
-generated: "2026-11-21T18:13:45.120151192Z"
+generated: "2026-11-24T20:17:20.414935679Z"
