@@ -146,39 +146,31 @@ once per MiloAgent restart or 24 hours.
 
 ## Deploy
 
-Run the bridge in the namespace of MiloAgent, so it reads the dashboard password from
-MiloAgent's own Secret. Any chart that runs one container with environment variables
-from a Secret fits. Values of a generic MCP server chart, for example:
+The MiloAgent chart (`deploy/`) runs the bridge with MiloAgent in one release;
+`deploy/values.yaml` documents every value under `bridge`.
 
-```yaml
-image:
-  repository: ghcr.io/hoolia/miloagent-bridge
-  tag: sha-<commit>
-env:
-  MILOAGENT_URL: http://miloagent:8420
-secretEnv:
-- name: MILOAGENT_PASSWORD
-  secret: <Secret holding MILO_WEB_PASS>
-  key: MILO_WEB_PASS
-port: 8000
-path: /mcp
-mcp:
-  targetName: miloagent
-networkPolicy:
-  # the namespaces of the MCP gateway and the scout
-  ingressNamespaces:
-  - matchLabels:
-      kubernetes.io/metadata.name: <gateway namespace>
-  egress:
-    allow:
-    - cidr: <pod network CIDR>   # the MiloAgent pod
-      ports: [8420]
-```
+| Component | Values | Objects | Rendered when |
+| --- | --- | --- | --- |
+| Server | `bridge.server` | Deployment, Service and NetworkPolicy `<release>-bridge`, port 8000 | `bridge.enabled` and `bridge.server.enabled` (both default `true`) |
+| Exporter | `bridge.exporter` | container `exporter` in the MiloAgent pod, port `monitoring.port` | also `monitoring.enabled` |
 
-The exporter runs from the same image as an `extraContainers` entry of the MiloAgent
-chart (`deploy/values.yaml`), with `command: [python3, -m, miloagent_bridge.exporter]`,
-a port named `metrics` (9420), the volume `data` at `/volume` and the volume `logs` at
-`/app/logs` read-only. [docs/alerts.md](../docs/alerts.md) is the runbook of its alerts.
+- `bridge.enabled: false` renders the chart exactly as without the bridge;
+  `tests/chart/run.sh` holds that.
+- The server logs in as `env.MILO_WEB_USER` at `http://<release>:<service.port>`. The
+  password comes from `bridge.server.passwordSecret`, else `MILO_WEB_PASS` of the
+  chart's env Secret when `env.MILO_WEB_PASS` is set, else of `existingSecrets.env`.
+- The server answers without authentication. Its NetworkPolicy admits the own namespace
+  and `bridge.server.networkPolicy.ingressNamespaces` only; agents reach it through an
+  MCP gateway. `bridge.server.mcp.targetName` adds the annotations
+  `agentgateway.dev/mcp-path` and `agentgateway.dev/mcp-target-name`, and
+  `bridge.server.mcp.appProtocol` the Service port's `appProtocol`.
+- `bridge.server.networkPolicy.egress.enabled` limits the server's egress to DNS and
+  MiloAgent's dashboard port.
+- The exporter runs as root because MiloAgent's volume belongs to root, with every
+  capability dropped, the volume `data` at `/volume` and `logs` at `/app/logs`
+  read-only. [docs/alerts.md](../docs/alerts.md) is the runbook of its alerts.
+- The chart refuses an `extraContainers` entry named `exporter` while it adds its own:
+  move a hand-made exporter to `bridge.exporter`.
 
 ## Develop
 

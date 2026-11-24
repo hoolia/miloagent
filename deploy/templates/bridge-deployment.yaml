@@ -1,0 +1,81 @@
+{{- if and .Values.bridge.enabled .Values.bridge.server.enabled }}
+{{- $server := .Values.bridge.server }}
+# Read-only bridge (bridge/README.md): MCP at /mcp, GET /signals and GET /healthz. It reads
+# MiloAgent's dashboard API with the dashboard password; it has no write path.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "miloagent.bridge.fullname" . }}
+  labels:
+    {{- include "miloagent.bridge.labels" . | nindent 4 }}
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      {{- include "miloagent.bridge.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "miloagent.bridge.labels" . | nindent 8 }}
+      annotations:
+        # The server reads the password at start
+        checksum/secret-env: {{ include (print $.Template.BasePath "/secret-env.yaml") . | sha256sum }}
+    spec:
+      {{- if .Values.imagePullSecret.create }}
+      imagePullSecrets:
+        - name: {{ include "miloagent.fullname" . }}-ghcr-pull
+      {{- end }}
+      # The bridge needs no Kubernetes API access
+      automountServiceAccountToken: false
+      containers:
+        - name: server
+          image: {{ include "miloagent.bridge.image" . | quote }}
+          imagePullPolicy: {{ .Values.bridge.image.pullPolicy }}
+          env:
+            - name: HOME
+              value: /tmp
+            - name: MILOAGENT_URL
+              value: {{ printf "http://%s:%v" (include "miloagent.fullname" .) .Values.service.port | quote }}
+            - name: MILOAGENT_USERNAME
+              value: {{ .Values.env.MILO_WEB_USER | default "admin" | quote }}
+            - name: MILOAGENT_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "miloagent.bridge.passwordSecret" . }}
+                  key: {{ $server.passwordSecret.key }}
+            {{- range $k, $v := $server.env }}
+            - name: {{ $k }}
+              value: {{ $v | toString | quote }}
+            {{- end }}
+          ports:
+            - name: mcp
+              containerPort: 8000
+              protocol: TCP
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: mcp
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: mcp
+            initialDelaySeconds: 20
+            periodSeconds: 30
+          resources:
+            {{- toYaml $server.resources | nindent 12 }}
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            runAsNonRoot: true
+            capabilities:
+              drop: [ALL]
+            seccompProfile:
+              type: RuntimeDefault
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: tmp
+          emptyDir: {}
+{{- end }}

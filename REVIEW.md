@@ -50,6 +50,8 @@ dashboard API, and a Prometheus exporter sidecar. P0 or P1 when a change breaks 
   untrusted data.
 - Errors returned to callers never carry the dashboard password or session token.
 - `GET /signals` keeps the signal record documented in `bridge/README.md`.
+- The chart keeps the unauthenticated bridge server in-cluster: no Route, and its
+  NetworkPolicy on by default admitting only the own namespace and the listed ones.
 - Dependencies are pinned in `bridge/pyproject.toml` and hashed in
   `bridge/requirements.lock`; the Containerfile installs from the lock only.
 

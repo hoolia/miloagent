@@ -39,3 +39,39 @@ app.kubernetes.io/part-of: {{ include "miloagent.name" . }}
 app.kubernetes.io/managed-by: {{ .Release.Service }}
 helm.sh/chart: {{ printf "%s-%s" .Chart.Name .Chart.Version | replace "+" "_" }}
 {{- end -}}
+
+{{/* Bridge: name, labels and image. Its pods never carry the MiloAgent selector. */}}
+{{- define "miloagent.bridge.fullname" -}}
+{{- printf "%s-bridge" (include "miloagent.fullname" .) | trunc 63 | trimSuffix "-" -}}
+{{- end -}}
+
+{{- define "miloagent.bridge.selectorLabels" -}}
+app: {{ include "miloagent.name" . }}-bridge
+app.kubernetes.io/instance: {{ .Release.Name }}
+{{- end -}}
+
+{{- define "miloagent.bridge.labels" -}}
+{{ include "miloagent.bridge.selectorLabels" . }}
+app.kubernetes.io/name: {{ include "miloagent.name" . }}-bridge
+app.kubernetes.io/component: bridge
+app.kubernetes.io/part-of: {{ include "miloagent.name" . }}
+app.kubernetes.io/managed-by: {{ .Release.Service }}
+helm.sh/chart: {{ printf "%s-%s" .Chart.Name .Chart.Version | replace "+" "_" }}
+{{- end -}}
+
+{{- define "miloagent.bridge.image" -}}
+{{- printf "%s:%s" .Values.bridge.image.repository .Values.bridge.image.tag -}}
+{{- end -}}
+
+{{/* Secret with the dashboard password for the bridge server */}}
+{{- define "miloagent.bridge.passwordSecret" -}}
+{{- if .Values.bridge.server.passwordSecret.name -}}
+{{- .Values.bridge.server.passwordSecret.name -}}
+{{- else if .Values.env.MILO_WEB_PASS -}}
+{{- include "miloagent.fullname" . -}}-env
+{{- else if .Values.existingSecrets.env -}}
+{{- .Values.existingSecrets.env -}}
+{{- else -}}
+{{- fail "bridge.server needs the dashboard password: set env.MILO_WEB_PASS, existingSecrets.env or bridge.server.passwordSecret.name" -}}
+{{- end -}}
+{{- end -}}

@@ -88,6 +88,47 @@ spec:
               readOnly: true
             {{- end }}
             {{- end }}
+        {{- $exporter := .Values.bridge.exporter }}
+        {{- if and .Values.bridge.enabled $exporter.enabled .Values.monitoring.enabled }}
+        {{- range .Values.extraContainers }}
+        {{- if eq .name "exporter" }}
+        {{- fail "extraContainers has a container named exporter: the chart adds it with bridge.exporter; remove it from extraContainers or set bridge.exporter.enabled=false" }}
+        {{- end }}
+        {{- end }}
+        # Prometheus exporter of the bridge image (docs/alerts.md, bridge/README.md): reads the log and the
+        # database read-only, writes only its own probe file at the volume root
+        - name: exporter
+          image: {{ include "miloagent.bridge.image" . | quote }}
+          imagePullPolicy: {{ .Values.bridge.image.pullPolicy }}
+          command: [python3, -m, miloagent_bridge.exporter]
+          env:
+            - name: EXPORTER_PORT
+              value: {{ .Values.monitoring.port | quote }}
+            - name: EXPORTER_HEALTH_URL
+              value: {{ printf "http://127.0.0.1:%v/health" .Values.service.port | quote }}
+            {{- range $k, $v := $exporter.env }}
+            - name: {{ $k }}
+              value: {{ $v | toString | quote }}
+            {{- end }}
+          ports:
+            - name: metrics
+              containerPort: {{ .Values.monitoring.port }}
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: metrics
+            periodSeconds: 30
+          resources:
+            {{- toYaml $exporter.resources | nindent 12 }}
+          securityContext:
+            {{- toYaml $exporter.securityContext | nindent 12 }}
+          volumeMounts:
+            - name: data
+              mountPath: /volume
+            - name: logs
+              mountPath: /app/logs
+              readOnly: true
+        {{- end }}
         {{- with .Values.extraContainers }}
         {{- toYaml . | nindent 8 }}
         {{- end }}

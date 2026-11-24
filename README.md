@@ -266,12 +266,15 @@ The chart lives in `deploy/`; `deploy/values.yaml` documents every value.
   files such as `llm.yaml`).
 - Monitoring: `monitoring.enabled: true` adds a ServiceMonitor, alert rules and the
   Service `<release>-metrics` (Prometheus Operator CRDs required). The `miloagent_*`
-  series come from an exporter container you add with `extraContainers`; the bridge
-  image `ghcr.io/hoolia/miloagent-bridge` holds one ([bridge/README.md](bridge/README.md#deploy)).
-  [docs/alerts.md](docs/alerts.md) lists the series and is the runbook of every alert.
-- Read-only access for agents: [bridge/](bridge/README.md) is an MCP server and an HTTP
-  `GET /signals` endpoint over MiloAgent's findings, with its own image and no write path
-  to MiloAgent.
+  series come from the bridge's exporter container, which the chart adds with
+  monitoring; [docs/alerts.md](docs/alerts.md) lists the series and is the runbook of
+  every alert.
+- Read-only access for agents: `bridge.enabled` (default `true`) adds
+  [the bridge](bridge/README.md), Deployment and Service `<release>-bridge` with an MCP
+  server at `:8000/mcp` and `GET /signals`, from its own image and with no write path
+  to MiloAgent. `bridge.enabled: false` leaves the chart as it was without the bridge.
+- Upgrade from 0.3: an exporter in `extraContainers` moves to `bridge.exporter`; the
+  chart refuses a second container named `exporter`.
 - Tests: `tests/chart/run.sh` renders the chart and runs the promtool tests of the rules.
 
 ---
