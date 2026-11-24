@@ -266,8 +266,12 @@ The chart lives in `deploy/`; `deploy/values.yaml` documents every value.
   files such as `llm.yaml`).
 - Monitoring: `monitoring.enabled: true` adds a ServiceMonitor, alert rules and the
   Service `<release>-metrics` (Prometheus Operator CRDs required). The `miloagent_*`
-  series come from an exporter container you add with `extraContainers`;
+  series come from an exporter container you add with `extraContainers`; the bridge
+  image `ghcr.io/hoolia/miloagent-bridge` holds one ([bridge/README.md](bridge/README.md#deploy)).
   [docs/alerts.md](docs/alerts.md) lists the series and is the runbook of every alert.
+- Read-only access for agents: [bridge/](bridge/README.md) is an MCP server and an HTTP
+  `GET /signals` endpoint over MiloAgent's findings, with its own image and no write path
+  to MiloAgent.
 - Tests: `tests/chart/run.sh` renders the chart and runs the promtool tests of the rules.
 
 ---
@@ -369,6 +373,7 @@ MiloAgent/
 |   |-- telegram_bot.py       # Telegram bot dashboard
 |   +-- static/               # Frontend (HTML/JS/CSS)
 |
+|-- bridge/                   # Read-only MCP bridge and metrics exporter (own image)
 |-- prompts/                  # LLM prompt templates
 |-- projects/                 # Product configs (gitignored, example in repo)
 +-- data/                     # Runtime data (gitignored)

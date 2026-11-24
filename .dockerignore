@@ -25,3 +25,5 @@ assets/screenshots/
 tasks/
 memory/
 CLAUDE.md
+# the bridge has its own image (bridge/Containerfile)
+bridge/

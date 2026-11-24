@@ -1,0 +1,32 @@
+[project]
+name = "miloagent-bridge"
+version = "0.3.0"
+description = "Read-only MCP and HTTP interface to MiloAgent's Reddit findings. No write path to MiloAgent."
+requires-python = ">=3.12,<3.13"
+dependencies = [
+  "mcp==2.3.0",
+  "httpx==0.28.1",
+]
+
+[project.optional-dependencies]
+test = [
+  "pytest==9.2.0",
+  "pytest-asyncio==1.5.0",
+  "respx==0.23.1",
+]
+
+[project.scripts]
+miloagent-bridge = "miloagent_bridge.server:main"
+miloagent-exporter = "miloagent_bridge.exporter:main"
+
+[build-system]
+requires = ["hatchling==1.27.0"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/miloagent_bridge"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"
+testpaths = ["tests"]
