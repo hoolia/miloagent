@@ -273,6 +273,13 @@ The chart lives in `deploy/`; `deploy/values.yaml` documents every value.
   [the bridge](bridge/README.md), Deployment and Service `<release>-bridge` with an MCP
   server at `:8000/mcp` and `GET /signals`, from its own image and with no write path
   to MiloAgent. `bridge.enabled: false` leaves the chart as it was without the bridge.
+- ServiceAccount and SCC: the MiloAgent pod runs as the ServiceAccount `<release>`
+  (`serviceAccount.create`, `serviceAccount.name`). On OpenShift, `securityContext.enabled`
+  (default `true`) binds the `anyuid` SCC to that ServiceAccount only; the bridge and any
+  other pod of the namespace keep the `default` ServiceAccount and their own SCC.
+- Upgrade from 0.4: the `anyuid` RoleBinding moves from the namespace `default`
+  ServiceAccount to `<release>`, and the MiloAgent pod restarts with it. A pod of your own
+  that relied on that grant to `default` now needs a grant of its own.
 - Upgrade from 0.3: an exporter in `extraContainers` moves to `bridge.exporter`; the
   chart refuses a second container named `exporter`.
 - Tests: `tests/chart/run.sh` renders the chart and runs the promtool tests of the rules.

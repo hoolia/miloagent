@@ -160,9 +160,17 @@ route:
   termination: edge
   insecureEdgeTerminationPolicy: Redirect
 
+# ServiceAccount of the MiloAgent pod (containers miloagent and exporter). An empty name
+# takes the fullname of the release. create: false uses an existing ServiceAccount of that
+# name. The bridge pod keeps the namespace default ServiceAccount.
+serviceAccount:
+  create: true
+  name: ""
+
 # OpenShift SCC: headless Chromium (web/cookie mode) runs as an arbitrary UID and needs the
-# anyuid SCC, granted to the namespace default ServiceAccount via a RoleBinding. Disable on
-# non-OpenShift clusters or where the default SA already has sufficient privileges.
+# anyuid SCC, granted via a RoleBinding to the ServiceAccount of serviceAccount only; other
+# pods of the namespace keep their SCC. Disable on non-OpenShift clusters or where that
+# ServiceAccount already has sufficient privileges.
 securityContext:
   enabled: true
 

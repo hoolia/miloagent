@@ -23,6 +23,7 @@ spec:
         checksum/secret-files: {{ include (print $.Template.BasePath "/secret-files.yaml") . | sha256sum }}
         checksum/secret-env: {{ include (print $.Template.BasePath "/secret-env.yaml") . | sha256sum }}
     spec:
+      serviceAccountName: {{ include "miloagent.serviceAccountName" . }}
       {{- if .Values.imagePullSecret.create }}
       imagePullSecrets:
         - name: {{ include "miloagent.fullname" . }}-ghcr-pull
