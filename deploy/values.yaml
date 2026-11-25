@@ -103,7 +103,7 @@ bridge:
           port: 5353
   # Prometheus exporter sidecar "exporter" in the MiloAgent pod, on port monitoring.port.
   # Rendered only with monitoring.enabled. It runs as root because MiloAgent's volume
-  # belongs to root (anyuid, see securityContext.enabled), without any capability.
+  # belongs to root (see containerSecurityContext), without any capability.
   exporter:
     enabled: true
     # EXPORTER_INTERVAL_SECONDS, EXPORTER_TIMEOUT_SECONDS
@@ -167,12 +167,19 @@ serviceAccount:
   create: true
   name: ""
 
-# OpenShift SCC: headless Chromium (web/cookie mode) runs as an arbitrary UID and needs the
-# anyuid SCC, granted via a RoleBinding to the ServiceAccount of serviceAccount only; other
-# pods of the namespace keep their SCC. Disable on non-OpenShift clusters or where that
-# ServiceAccount already has sufficient privileges.
+# securityContext of the miloagent container. MiloAgent and headless Chromium (web/cookie
+# mode) run as root and the data volume belongs to root. On OpenShift a fixed UID needs an
+# SCC that admits it without a priority, such as anyuid-tenant, open to the group
+# system:serviceaccounts; restricted-v2 refuses the pod otherwise.
+containerSecurityContext:
+  runAsUser: 0
+
 securityContext:
-  enabled: true
+  # true: a RoleBinding grants the stock anyuid SCC to the ServiceAccount of
+  # serviceAccount. Only for an OpenShift cluster without an SCC like anyuid-tenant: the
+  # stock anyuid has priority 10 and wins over restricted-v2 for every pod of that
+  # ServiceAccount.
+  anyuidRoleBinding: false
 
 # Non-secret config. Empty → chart uses the bundled defaults in deploy/files/.
 config:

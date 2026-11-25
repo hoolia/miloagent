@@ -1,6 +1,9 @@
 {{- if .Values.securityContext.enabled }}
-# Headless Chromium (web/cookie mode) needs anyuid, bound to the MiloAgent ServiceAccount
-# only: other pods of the namespace, the bridge included, keep their own SCC.
+{{- fail "securityContext.enabled was removed in chart 0.6.0 and no longer binds anyuid: the stock anyuid RoleBinding is opt-in with securityContext.anyuidRoleBinding; see README, Upgrade from 0.5" }}
+{{- end }}
+{{- if .Values.securityContext.anyuidRoleBinding }}
+# Opt-in: the stock anyuid SCC for the MiloAgent ServiceAccount only, on a cluster without
+# an SCC like anyuid-tenant. Other pods of the namespace, the bridge included, keep theirs.
 apiVersion: rbac.authorization.k8s.io/v1
 kind: RoleBinding
 metadata:

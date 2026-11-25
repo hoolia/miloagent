@@ -274,9 +274,16 @@ The chart lives in `deploy/`; `deploy/values.yaml` documents every value.
   server at `:8000/mcp` and `GET /signals`, from its own image and with no write path
   to MiloAgent. `bridge.enabled: false` leaves the chart as it was without the bridge.
 - ServiceAccount and SCC: the MiloAgent pod runs as the ServiceAccount `<release>`
-  (`serviceAccount.create`, `serviceAccount.name`). On OpenShift, `securityContext.enabled`
-  (default `true`) binds the `anyuid` SCC to that ServiceAccount only; the bridge and any
-  other pod of the namespace keep the `default` ServiceAccount and their own SCC.
+  (`serviceAccount.create`, `serviceAccount.name`). Its `miloagent` container sets
+  `runAsUser: 0` (`containerSecurityContext`), and so does the `exporter` container. On
+  OpenShift the pod needs an SCC that admits a fixed UID without a priority, such as
+  `anyuid-tenant` open to the group `system:serviceaccounts`. On a cluster without one,
+  `securityContext.anyuidRoleBinding: true` binds the stock `anyuid` SCC to that
+  ServiceAccount instead. The bridge keeps the `default` ServiceAccount and `restricted-v2`.
+- Upgrade from 0.5: the chart no longer binds the stock `anyuid` SCC by default, and
+  `securityContext.enabled` is removed; the chart refuses to render while it is `true`.
+  Make sure the cluster has an SCC like `anyuid-tenant` before the upgrade, or set
+  `securityContext.anyuidRoleBinding: true`.
 - Upgrade from 0.4: the `anyuid` RoleBinding moves from the namespace `default`
   ServiceAccount to `<release>`, and the MiloAgent pod restarts with it. A pod of your own
   that relied on that grant to `default` now needs a grant of its own.
