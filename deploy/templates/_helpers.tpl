@@ -17,6 +17,11 @@
 {{- end -}}
 {{- end -}}
 
+{{/* ServiceAccount of the MiloAgent pod; the bridge pod keeps the namespace default */}}
+{{- define "miloagent.serviceAccountName" -}}
+{{- default (include "miloagent.fullname" .) .Values.serviceAccount.name -}}
+{{- end -}}
+
 {{/* Common labels */}}
 {{- define "miloagent.labels" -}}
 app: {{ include "miloagent.name" . }}
