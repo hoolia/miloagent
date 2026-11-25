@@ -17,7 +17,8 @@ render existing.yaml --set env.MILO_WEB_PASS= --set existingSecrets.env=creds \
   --set secrets.llm=plain --set secrets.reddit_api=plain \
   --set 'extraObjects[0].apiVersion=v1' --set 'extraObjects[0].kind=ConfigMap' \
   --set 'extraObjects[0].metadata.name=extra'
-render sa.yaml --set serviceAccount.create=false --set serviceAccount.name=milo-sa
+render sa.yaml --set serviceAccount.create=false --set serviceAccount.name=milo-sa \
+  --set securityContext.anyuidRoleBinding=true
 render nobridge.yaml --set bridge.enabled=false
 render nobridge-on.yaml --set bridge.enabled=false --set monitoring.enabled=true
 render gateway.yaml --set bridge.server.mcp.targetName=miloagent \
@@ -33,6 +34,10 @@ if helm template miloagent "$repo/deploy" --set monitoring.enabled=true \
 fi
 helm template miloagent "$repo/deploy" --set monitoring.enabled=true --set bridge.exporter.enabled=false \
   --set 'extraContainers[0].name=exporter' --set 'extraContainers[0].image=x' > /dev/null
+# the removed securityContext.enabled is an error
+if helm template miloagent "$repo/deploy" --set securityContext.enabled=true > /dev/null 2>&1; then
+  echo "rendered with the removed securityContext.enabled" >&2; exit 1
+fi
 # no password source for the bridge is an error
 if helm template miloagent "$repo/deploy" --set env.MILO_WEB_PASS= > /dev/null 2>&1; then
   echo "bridge rendered without a password source" >&2; exit 1
@@ -132,16 +137,22 @@ assert exp[0]["ports"] == [{"name": "metrics", "containerPort": 9420}]
 assert {m["mountPath"]: m.get("readOnly", False) for m in exp[0]["volumeMounts"]} == {"/volume": False, "/app/logs": True}
 assert exp[0]["securityContext"]["capabilities"]["drop"] == ["ALL"]
 
-# anyuid only for the MiloAgent ServiceAccount, never for default or the bridge
+# root by runAsUser, not by a stock anyuid binding: no RoleBinding by default, the bridge
+# without a ServiceAccount and without runAsUser
 one("off.yaml", "ServiceAccount", "miloagent")
 assert one("off.yaml", "Deployment", "miloagent")["spec"]["template"]["spec"]["serviceAccountName"] == "miloagent"
+assert container("off.yaml")["securityContext"] == {"runAsUser": 0}
 assert "serviceAccountName" not in pod["spec"], "bridge pod has a ServiceAccount"
-rb = one("off.yaml", "RoleBinding", "miloagent-anyuid")
+assert "runAsUser" not in pod["spec"].get("securityContext", {}), "bridge pod sets runAsUser"
+assert "runAsUser" not in server["securityContext"], "bridge server sets runAsUser"
+for f in ("off.yaml", "on.yaml", "existing.yaml", "gateway.yaml"):
+    assert not [d for d in docs(f) if d["kind"] == "RoleBinding"], f"{f}: RoleBinding rendered by default"
+# opt-in: the stock anyuid for the chart's ServiceAccount only
+rb = one("sa.yaml", "RoleBinding", "miloagent-anyuid")
 assert rb["roleRef"]["name"] == "system:openshift:scc:anyuid"
-assert rb["subjects"] == [{"kind": "ServiceAccount", "name": "miloagent", "namespace": "miloagent"}]
+assert rb["subjects"] == [{"kind": "ServiceAccount", "name": "milo-sa", "namespace": "miloagent"}]
 assert not [d for d in docs("sa.yaml") if d["kind"] == "ServiceAccount"], "ServiceAccount rendered with create=false"
 assert one("sa.yaml", "Deployment", "miloagent")["spec"]["template"]["spec"]["serviceAccountName"] == "milo-sa"
-assert one("sa.yaml", "RoleBinding", "miloagent-anyuid")["subjects"][0]["name"] == "milo-sa"
 
 # the password from existingSecrets.env when the values hold none
 env = {e["name"]: e for e in one("existing.yaml", "Deployment", "miloagent-bridge")["spec"]["template"]["spec"]["containers"][0]["env"]}
